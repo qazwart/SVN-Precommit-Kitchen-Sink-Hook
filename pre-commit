@@ -1,0 +1,7 @@
+#!/bin/sh
+
+REPOS="$1"
+TXN="$2"
+HOOKS_DIR="$1/hooks"
+
+$HOOKS_DIR/pre-commit-kitchen-sink-hook.pl -t $TXN -svnlook /usr/bin/svnlook -file $HOOKS_DIR/control.ini $REPOS
