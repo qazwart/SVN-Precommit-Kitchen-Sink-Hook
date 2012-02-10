@@ -48,6 +48,7 @@ use warnings;
 #
 use Data::Dumper;
 use Getopt::Long;
+use Pod::Usage;
 #
 ########################################################################
 
@@ -62,6 +63,7 @@ my $transaction	 = undef;	#Transaction Number of Repository to examine
 my $revision	 = undef;	#Revision Number (for testing)
 my $parse	 = undef;	#Parse Control File, but don't run trigger
 my $helpFlag	 = undef;	#Display Help?
+my $options	 = undef;       #Display detailed help
 
 GetOptions (
     "svnlook=s" =>	\$svnlookCmd,
@@ -70,6 +72,7 @@ GetOptions (
     "r=i" =>		\$revision,
     "parse" =>		\$parse,
     "help" =>		\$helpFlag,
+    "options" =>	\$options,
 );
 
 if ($ARGV[0]) {
@@ -77,8 +80,19 @@ if ($ARGV[0]) {
 }
 
 if ($helpFlag) {
-    print "$USAGE\n";
-    exit 2;
+    pod2usage(
+	{
+            -message =>
+	    qq(Use "pre-commit-kitchen-sink-hook.pl -options" )
+		. qq(to see a detailed description of the parameters),
+	    -exitstatus => 0,
+	    -verbose    => 0,
+	}
+    );
+}
+
+if ($options) {
+    pod2usage( { -exitstatus => 0 } );
 }
 
 if (defined($transaction) and defined($revision)) {
@@ -1735,13 +1749,13 @@ pre-commit-kitchensink-hook.pl
 
 =head1 SYNOPSIS
 
-Subversion pre-commit hook that can handle a "kitchen sink" of issues.
-
     pre-commit-kitchen-sink-hook.pl [-file <ctrlFile>] \\
 	(-r<revision>|-t<transaction>)
 	[-svnlook <svnlookCmd>] [<repository>]
 
     pre-commit-kitchen-sink-hook.pl -help
+
+    pre-commit-kitchen-sink-hook.pl -options
 
 =head1 DESCRIPTION
 
@@ -1821,8 +1835,13 @@ when the hook is executed. Default is /usr/bin/svnlook.
 
 =item -help
 
-Prints a helpful message explaining the different parameters used in
+Prints a helpful message showing the different parameters used in
 running this pre-commit hook script.
+
+=item -options
+
+Prints a helpful message showing a detailed explanation of  the
+different parameters used in running this pre-commit hook script.
 
 =item <repository>
 
