@@ -1117,42 +1117,48 @@ sub VerifySection {
 # RETURNS:	The regular expression of the file.
 #
 sub Glob2Regex {
-    my $self = shift;
-    my $glob = shift;
+    my $self  = shift;
+    my $regex = shift;
 
-    my $regex = undef;
-    my $previousAstrisk = undef;
+    #
+    # Fix slashes to forward slashes
+    #
+    $regex =~ s{\\}{\/}g;
 
-    foreach my $letter (split(//, $glob)) { #Check if previous was astrisk
-	if ($previousAstrisk) {
-	    if ($letter eq "*") { #Double astrisk
-		$regex .= ".*";
-		$previousAstrisk = undef;
-		next;
-	    } else {	#Single astrisk: Write prev match
-		$regex .= "[^/]*";
-		$previousAstrisk = undef;
-	    }
-	}
-	if ($letter =~ /[\{\}\.\+\(\)\[\]]/) { #Quote all Regex metacharaters
-	    $regex .= "\\$letter";
-	} elsif ($letter eq "?") { #Translate Glob "?" to Regex
-	    $regex .= ".";
-	} elsif ($letter eq "*") { #Is this "*" or "**": Don't translate now
-	    $previousAstrisk = 1;
-	} elsif ($letter eq '\\') { # Make backslash for file forward slash
-	    $regex .= "/";
-	} else {	#No special Glob symbol
-	    $regex .= $letter;
-	}
-    }
     #
-    #   ####Handle if last letter was astrisk
+    # If the last character is "/" Append **
     #
-    if ($previousAstrisk) {
-	$regex .= "[^/]*";
-    }
-    $regex = "^$regex\$"; #Globs are anchored to start and end of string
+    $regex =~ s{/$}{/**};
+    #
+    # Quote all meta characters not in globs
+    # 
+    $regex =~ s/([\.\+\{\}\[\]])/\\$1/g;
+
+    #
+    # All instances of "**" are ubermatches
+    #
+    $regex =~ s{(\*\*)}{::UBERMATCH::}g;
+
+    #
+    # All instances of "*" are dirmatches
+    #
+    $regex =~ s{\*}{::DIRMATCH::}g;
+
+    #
+    # Replace all instances of "?" with "."
+    #
+    $regex =~ s/\?/./g;
+
+    #
+    # Fix the ::MATCH:: Stuff
+    #
+    $regex =~ s{::UBERMATCH::}{.*}g;
+    $regex =~ s{::DIRMATCH::}{[^/]*}g;
+
+    #
+    # Anchor the Regex to start and end
+    #
+    $regex = '^' . $regex . '$';
     return $regex;
 }
 
