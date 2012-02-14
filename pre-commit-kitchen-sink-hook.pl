@@ -23,18 +23,6 @@ use constant {
 ########################################################################
 
 ########################################################################
-# USAGE
-#
-our $USAGE = <<USAGE;
-	usage:
-	    pre-commit-kitchen-sink-hook.pl [-file <ctrlFile>] \\
-		(-r<revision>|-t<transaction>) [-parse]
-		[-svnlook <svnlookCmd>] [<repository>]
-USAGE
-#
-########################################################################
-
-########################################################################
 # PRAGMAS
 #
 use strict;
@@ -65,6 +53,7 @@ my $parse	 = undef;	#Parse Control File, but don't run trigger
 my $helpFlag	 = undef;	#Display Help?
 my $options	 = undef;       #Display detailed help
 
+$| = 1;
 GetOptions (
     "svnlook=s" =>	\$svnlookCmd,
     "file=s" =>		\$controlFile,
@@ -731,7 +720,10 @@ sub CheckFile {
     foreach my $fileObject ($self->GetSectionType("file")) {
 	my $access = $fileObject->GetAccess;
 	my $regex  = $fileObject->GetMatch;
-	my $case   = uc $fileObject->GetCase;
+	my $case = "";
+	if ($fileObject->GetCase) {
+	    $case   = uc $fileObject->GetCase;
+	}
 
 	if ($file =~ /$regex/
 		or ($case eq uc(IGNORE_CASE) and $file =~ /$regex/i)) {
@@ -789,7 +781,10 @@ sub CheckBan {
 
     foreach my $banObject ($self->GetSectionType("ban")) {
 	my $regex = $banObject->GetMatch;
-	my $case  = uc $banObject->GetCase;
+	my $case = "";
+	if ($banObject->GetCase) {
+	    $case  = uc $banObject->GetCase;
+	}
 	if ($file =~ /$regex/
 		or ($case eq uc(IGNORE_CASE) and $file =~ /$regex/i)) {
 	    my $reason = $banObject->SectionPurpose;
