@@ -1,19 +1,14 @@
-To get documentation on any of these files, use the "perldoc" command.
-To generate HTML documentation, use the "pod2html" command.
-
-========================================================================
-
 NAME
     pre-commit-kitchensink-hook.pl
 
 SYNOPSIS
-    Subversion pre-commit hook that can handle a "kitchen sink" of issues.
-
         pre-commit-kitchen-sink-hook.pl [-file <ctrlFile>] \\
             (-r<revision>|-t<transaction>)
             [-svnlook <svnlookCmd>] [<repository>]
 
         pre-commit-kitchen-sink-hook.pl -help
+
+        pre-commit-kitchen-sink-hook.pl -options
 
 DESCRIPTION
     This is a Subversion pre-commit hook that can check for several issues
@@ -70,8 +65,12 @@ OPTIONS
               variable is empty when the hook is executed. Default is
               /usr/bin/svnlook.
 
-    -help     Prints a helpful message explaining the different parameters
-              used in running this pre-commit hook script.
+    -help     Prints a helpful message showing the different parameters used
+              in running this pre-commit hook script.
+
+    -options  Prints a helpful message showing a detailed explanation of the
+              different parameters used in running this pre-commit hook
+              script.
 
     <repository>
               The location of the Subversion repository's physical
@@ -278,10 +277,18 @@ CONTROL FILE LAYOUT
                      commit changes to that file. The user is not allowed to
                      create, delete, or modify this file.
 
-           no-delete Files marked as <no-delete> allow the user to modify
+           no-delete Files marked as "no-delete" allow the user to modify
                      and even create the file, but not delete the file. This
                      is good for a file that needs to be modified, but you
                      don't want to be removed.
+
+           no-add    Files marked as "no-add" allow the user to modify the
+                     file if it already exists, and are allowed to delete a
+                     file if it already exists, but they are not allowed to
+                     add a new file to the repository. This is combined with
+                     the no-delete option above to allow people to modify
+                     files, but not to add new files or delete old ones from
+                     the repository.
 
            add-only  This is a special access permission that will allow a
                      user to add, but not modify a file with that matching
@@ -589,3 +596,4 @@ COPYRIGHT
         I'd prefer. Or, if you're feeling really spendthrify, you can buy me
         lunch. I promise to eat with my mouth closed and to use a napkin
         instead of my sleeves.
+

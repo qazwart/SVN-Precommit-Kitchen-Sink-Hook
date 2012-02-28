@@ -710,6 +710,7 @@ sub CheckFile {
 	READ_WRITE	=> "RW",
 	ADD_ONLY	=> "AO",
 	NO_DELETE	=> "ND",
+	NO_ADD		=> "NA",
 	IGNORE_CASE	=> "ignore",
     };
 
@@ -747,6 +748,10 @@ sub CheckFile {
 		    $sectionPurpose = $fileObject->SectionPurpose;
 		}
 
+	    }
+	    elsif ($access eq NO_ADD and $status =~ /^A/) {
+		$permission = NOT_PERMITTED;
+		$sectionPurpose = $fileObject->SectionPurpose;
 	    }
 	}
     }
@@ -1324,6 +1329,7 @@ use constant {
     ACCESS_WRITE	=> "read-write",
     ACCESS_ADD		=> "add-only",
     ACCESS_NO_DELETE	=> "no-delete",
+    ACCESS_NO_ADD	=> "no-add",
     ALL_GROUP		=> "ALL",
 };
 
@@ -1376,6 +1382,9 @@ sub VerifySection {
     }
     elsif ($access eq uc ACCESS_NO_DELETE) {
 	$hashRef->{uc ACCESS} = "ND";
+    }
+    elsif ($access eq uc ACCESS_NO_ADD) {
+	$hashRef->{uc ACCESS} = "NA";
     }
     else {
 	$configFile->AddError($self, qq(Invalid file access "$access"));
@@ -2068,9 +2077,17 @@ file.
 
 =item no-delete
 
-Files marked as <no-delete> allow the user to modify and even create the
+Files marked as C<no-delete> allow the user to modify and even create the
 file, but not delete the file. This is good for a file that needs to be
 modified, but you don't want to be removed.
+
+=item no-add
+
+Files marked as C<no-add> allow the user to modify the file if it already
+exists, and are allowed to delete a file if it already exists, but they
+are not allowed to add a new file to the repository. This is combined
+with the L<no-delete> option above to allow people to modify files, but
+not to add new files or delete old ones from the repository.
 
 =item add-only
 
