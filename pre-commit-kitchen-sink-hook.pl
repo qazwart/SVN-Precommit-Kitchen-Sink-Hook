@@ -47,16 +47,18 @@ my $svnlookCmd	   = SVNLOOK_CMD_DEFAULT;	#svnlook Command (Full path!)
 my $controlFile	   = CONTROL_FILE_DEFAULT;	#Control File
 my $svnRepository  = SVN_REPOSITORY_DEFAULT;	#Subversion Repository
 
-my $transaction	 = undef;	#Transaction Number of Repository to examine
-my $revision	 = undef;	#Revision Number (for testing)
-my $parse	 = undef;	#Parse Control File, but don't run trigger
-my $helpFlag	 = undef;	#Display Help?
-my $options	 = undef;       #Display detailed help
+my $controlFileLocation;	#The Control File URL if you store the file in the repository
+my $transaction; #Transaction Number of Repository to examine
+my $revision;	#Revision Number (for testing)
+my $parse;	#Parse Control File, but don't run trigger
+my $helpFlag;	#Display Help?
+my $options;    #Display detailed help
 
 $| = 1;
 GetOptions (
     "svnlook=s" =>	\$svnlookCmd,
     "file=s" =>		\$controlFile,
+    "fileloc=s" =>	\$controlFileLocation,
     "t=s" =>		\$transaction,
     "r=i" =>		\$revision,
     "parse" =>		\$parse,
@@ -134,8 +136,15 @@ elsif (not $user) {
 my $configFile = ConfigFile->new($svnRepository, $user, $revision);
 $configFile->SvnlookCmd($svnlookCmd);
 
-open(CONTROL_FILE, "$controlFile")
-    or die qq(ERROR: Cannot open file "$controlFile" for reading\n);
+if (defined $controlFileLocation) { #Control File is in repository
+    my $command = qq($svnlookCmd cat $svnRepository $controlFileLocation);
+    open (CONTROL_FILE, "-|", $command)
+	or die qq(ERROR: File "$controlFile" is not in repository\n);
+}
+else {		#Defined a Control File
+    open(CONTROL_FILE, "$controlFile")
+	or die qq(ERROR: Cannot open file "$controlFile" for reading\n);
+}
 
 my $section = undef;			#Not working on a section
 my $prevSection = undef;
@@ -1759,7 +1768,7 @@ pre-commit-kitchensink-hook.pl
 
 =head1 SYNOPSIS
 
-    pre-commit-kitchen-sink-hook.pl [-file <ctrlFile>] \\
+    pre-commit-kitchen-sink-hook.pl [-file <ctrlFile> | -fileloc <cntrlFile>] \\
 	(-r<revision>|-t<transaction>)
 	[-svnlook <svnlookCmd>] [<repository>]
 
@@ -1822,6 +1831,27 @@ other changes without having to modify this program itself.
 The I<Control File> used for verifying the Subversion pre-commit
 transaction. The default is C<control-file.ini> in the repository
 hook directory. The control file layout is given below.
+
+=item -fileloc
+
+The I<Control File> used for verifying the Subversion pre-commit
+transaction. This is the location inside the repository where the
+control file is stored. This can be used instead of the L<-file>
+parameter shown above.
+
+By storing the control file inside the repository, it makes it easier to
+manage the control file without having to log into the Subversion
+repository server itself, and modifying the F<hooks> directory. This
+also will give you a history of who modified the control file, when, and
+why.
+
+Remember that you can protect other users from modifying the control
+file by setting this control.ini file itself. Which brings up a little
+word of caution. It is very possible to lock yourself out of modifying
+this control file by taking away permissions for you to modify this
+control file in the control file itself. If this happens, you may have
+to temporarily remove the hook in order to regrant yourself permissions
+back in this control file.
 
 =item -r
 
