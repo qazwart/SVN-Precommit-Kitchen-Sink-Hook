@@ -92,8 +92,8 @@ NAME
     pre-commit-kitchensink-hook.pl
 
 SYNOPSIS
-        pre-commit-kitchen-sink-hook.pl [-file <ctrlFile> | -fileloc <cntrlFile>] \\
-            (-r<revision>|-t<transaction>)
+        pre-commit-kitchen-sink-hook.pl [-file <ctrlFile>] \\
+            [-fileloc <cntrlFile>] (-r<revision>|-t<transaction>) \\
             [-svnlook <svnlookCmd>] [<repository>]
 
         pre-commit-kitchen-sink-hook.pl -help
@@ -134,31 +134,43 @@ DESCRIPTION
     other changes without having to modify this program itself.
 
 OPTIONS
-    -file     The *Control File* used for verifying the Subversion
-              pre-commit transaction. The default is "control-file.ini" in
-              the repository hook directory. The control file layout is
-              given below.
+  Control File Definition
+    The *Control File* controls the way this hook operates. It can control
+    the permissions you're granting to various users, your group
+    definitions, what names are not allowed in your repository, and the
+    properties associated with the file and revision.
 
-    -fileloc  The *Control File* used for verifying the Subversion
-              pre-commit transaction. This is the location inside the
-              repository where the control file is stored. This can be used
-              instead of the -file parameter shown above.
+    There are two places where the control file can be stored. The first is
+    inside the Subversion repository server as a physical text file. This
+    keeps the control file away from prying eyes. Unfortunately, it means
+    that you must have login access to the repository server in order to
+    maintain the file.
 
-              By storing the control file inside the repository, it makes it
-              easier to manage the control file without having to log into
-              the Subversion repository server itself, and modifying the
-              hooks directory. This also will give you a history of who
-              modified the control file, when, and why.
+    The other place is inside the repository itself. This makes it easy to
+    maintain. Plus, since it's in a Subversion repository, you'll see who
+    changed this file, when, and why. That can be nice for auditing.
+    Unfortunately, this file will be visible to everyone. If you have an
+    LDAP password in that file, you'll be exposing that password to all of
+    your users.
 
-              Remember that you can protect other users from modifying the
-              control file by setting this control.ini file itself. Which
-              brings up a little word of caution. It is very possible to
-              lock yourself out of modifying this control file by taking
-              away permissions for you to modify this control file in the
-              control file itself. If this happens, you may have to
-              temporarily remove the hook in order to regrant yourself
-              permissions back in this control file.
+    You are allowed to use either a physcial control file, a control file
+    stored in the repository, or both. You must have at least one or the
+    other defined.
 
+    Format of the control file is discussed below. See "CONTROL FILE LAYOUT"
+
+    -file     The location of the physical text control file stored on the
+              Subversion repository server. Normally, this is kept in the
+              hooks directory under the Subversion repository directory.
+
+    -fileloc  The location fo the control file inside the Subversion
+              repository. This should use the "svnlook" format. For exmaple,
+              if you have a directory called control under the root of your
+              repository, and inside, your control file is called
+              "control.ini", the value of this parameter would be
+              /control/control.ini.
+
+  Other Options
     -r        The Subversion repository revision. Normally, this is only
               used for testing purposes since you really want the
               transaction number of the commit and not the revision number.
@@ -520,7 +532,7 @@ CONTROL FILE LAYOUT
         value = ^(NONE)|(([A-Z]{3,4}-\d+(,\s+)?)+):.{10,}
         type = REGEX
 
-    Imagine you have a ticketin system where ticket numbers start with a
+    Imagine you have a ticketing system where ticket numbers start with a
     three or four capital letter issue type, followed by a dash, followed by
     an issue number (much like Jira). The above will require a user to list
     one or more comma separated issue IDs, followed by a colon and a space.
