@@ -16,8 +16,7 @@
 #
 use constant {
     SVNLOOK_CMD_DEFAULT	   => "/usr/bin/svnlook",
-    CONTROL_FILE_DEFAULT   => "./control.ini",
-    SVN_REPOSITORY_DEFAULT => "/path/to/repos"
+    SVN_REPOSITORY_DEFAULT => "/path/to/repos",
 };
 #
 ########################################################################
@@ -44,9 +43,9 @@ use Pod::Usage;
 # GET COMMAND LINE OPTIONS
 #
 my $svnlookCmd	   = SVNLOOK_CMD_DEFAULT;	#svnlook Command (Full path!)
-my $controlFile	   = CONTROL_FILE_DEFAULT;	#Control File
 my $svnRepository  = SVN_REPOSITORY_DEFAULT;	#Subversion Repository
 
+my $controlFile;	#Control File
 my $controlFileLocation;	#The Control File URL if you store the file in the repository
 my $transaction; #Transaction Number of Repository to examine
 my $revision;	#Revision Number (for testing)
@@ -58,7 +57,7 @@ $| = 1;
 GetOptions (
     "svnlook=s" =>	\$svnlookCmd,
     "file=s" =>		\$controlFile,
-    "fileloc=s" =>	\$controlFileLocation,
+    "filelocation=s" =>	\$controlFileLocation,
     "t=s" =>		\$transaction,
     "r=i" =>		\$revision,
     "parse" =>		\$parse,
@@ -86,14 +85,18 @@ if ($options) {
     pod2usage( { -exitstatus => 0 } );
 }
 
-if (defined($transaction) and defined($revision)) {
+if (defined $transaction and defined $revision) {
     die qq(ERROR: You cannot use both "-r" and "-t" parameters\n);
 }
 
-if (not (defined($transaction) or defined($revision))) {
+if (not (defined $transaction or defined $revision)) {
     die qq(ERROR: You must specify either a transaction or revision\n);
 }
 
+if (not defined $controlFile and not defined $controlFileLocation) {
+    die qq(ERROR: No control file location defined. You must either have\n)
+	. qq(a physical control file and/or one in the repository.\n);
+}
 #
 # Append Trans # to svnlook command.
 # This way, we don't worry about it later
@@ -136,14 +139,29 @@ elsif (not $user) {
 my $configFile = ConfigFile->new($svnRepository, $user, $revision);
 $configFile->SvnlookCmd($svnlookCmd);
 
+#
+# Read in the Physical Control File on the SVN Repository Server
+#
+
+my @control_file;
+if (defined $controlFile) {
+    open(my $control_file_fh, "<", $controlFile)
+	or die qq(ERROR: Cannot open file "$controlFile" for reading\n);
+    @control_file = <$control_file_fh>;
+    close $control_file_fh;
+}
+
+#
+# Append to that the Control File List the repository Control file.
+#
+
 if (defined $controlFileLocation) { #Control File is in repository
     my $command = qq($svnlookCmd cat $svnRepository $controlFileLocation);
-    open (CONTROL_FILE, "-|", $command)
-	or die qq(ERROR: File "$controlFile" is not in repository\n);
-}
-else {		#Defined a Control File
-    open(CONTROL_FILE, "$controlFile")
-	or die qq(ERROR: Cannot open file "$controlFile" for reading\n);
+    my @repos_control_file = qx($command);
+    if (not @repos_control_file) {
+	die qq(ERROR: File "$controlFileLocation" is not in repository\n);
+    }
+    push @control_file, @repos_control_file;
 }
 
 my $section = undef;			#Not working on a section
@@ -155,7 +173,7 @@ my $lineNum = 0;
 # NOW PARSE THOUGHT THE ENTIRE CONTROL FILE
 #
 
-while (my $line = <CONTROL_FILE>) {
+foreach my $line (@control_file) {
     $lineNum++;
     chomp($line);
     next if ($line =~ /^\s*[#;']/);	#Comments start with "#", ";", or "'"
@@ -182,7 +200,6 @@ while (my $line = <CONTROL_FILE>) {
     }
 
 }
-close CONTROL_FILE;
 
 #
 # End of Control File: Process the last section and its parameters
@@ -257,7 +274,9 @@ foreach my $fileObject ($configFile->GetSectionType("file")) {
 #
 # Replace the File section of the control file with the trimmed down section
 #
-$configFile->ReplaceSectionType("file", $newFileSectionTypeRef);
+if ($configFile->GetSectionType("file")) {
+    $configFile->ReplaceSectionType("file", $newFileSectionTypeRef);
+}
 #
 ########################################################################
 
@@ -732,7 +751,7 @@ sub CheckFile {
 	my $regex  = $fileObject->GetMatch;
 	my $case = "";
 	if ($fileObject->GetCase) {
-	    $case   = uc $fileObject->GetCase;
+	    $case  = uc $fileObject->GetCase;
 	}
 
 	if ($file =~ /$regex/
@@ -860,7 +879,10 @@ sub CheckProperties {
 	my $reqProp  = $propObject->GetProperty;
 	my $reqValue = $propObject->GetValue;
 	my $type     = $propObject->GetType;
-	my $case     = $propObject->GetCase;
+	my $case = "";
+	if ($propObject->GetCase) {
+	    $case     = $propObject->GetCase;
+	}
 	my $reason   = $propObject->SectionPurpose;
 
 	if (not exists $propHash{$reqProp}) {
@@ -1126,7 +1148,7 @@ sub VerifySection {
 # RETURNS:	The regular expression of the file.
 #
 sub Glob2Regex {
-    my $self  = shift;
+    my $self = shift;
     my $regex = shift;
 
     #
@@ -1768,8 +1790,8 @@ pre-commit-kitchensink-hook.pl
 
 =head1 SYNOPSIS
 
-    pre-commit-kitchen-sink-hook.pl [-file <ctrlFile> | -fileloc <cntrlFile>] \\
-	(-r<revision>|-t<transaction>)
+    pre-commit-kitchen-sink-hook.pl [-file <ctrlFile>] \\
+	[-fileloc <cntrlFile>] (-r<revision>|-t<transaction>) \\
 	[-svnlook <svnlookCmd>] [<repository>]
 
     pre-commit-kitchen-sink-hook.pl -help
@@ -1824,34 +1846,54 @@ other changes without having to modify this program itself.
 
 =head1 OPTIONS
 
+=head2 Control File Definition
+
+The I<Control File> controls the way this hook operates. It can control
+the permissions you're granting to various users, your group
+definitions, what names are not allowed in your repository, and the
+properties associated with the file and revision.
+
+There are two places where the control file can be stored. The first is
+inside the Subversion repository server as a physical text file. This
+keeps the control file away from prying eyes. Unfortunately, it means
+that you must have login access to the repository server in order to
+maintain the file.
+
+The other place is inside the repository itself. This makes it easy to
+maintain. Plus, since it's in a Subversion repository, you'll see who
+changed this file, when, and why. That can be nice for auditing.
+Unfortunately, this file will be visible to everyone. If you have an
+LDAP password in that file, you'll be exposing that password to all of
+your users.
+
+You are allowed to use either a physcial control file, a control file
+stored in the repository, or both. You must have at least one or the
+other defined.
+
+Format of the control file is discussed below. See L<CONTROL FILE
+LAYOUT>
+
 =over 10
 
 =item -file
 
-The I<Control File> used for verifying the Subversion pre-commit
-transaction. The default is C<control-file.ini> in the repository
-hook directory. The control file layout is given below.
+The location of the physical text control file stored on the Subversion
+repository server. Normally, this is kept in the F<hooks> directory
+under the Subversion repository directory.
 
 =item -fileloc
 
-The I<Control File> used for verifying the Subversion pre-commit
-transaction. This is the location inside the repository where the
-control file is stored. This can be used instead of the L<-file>
-parameter shown above.
+The location fo the control file inside the Subversion repository. This
+should use the C<svnlook> format. For exmaple, if you have a directory
+called F<control> under the root of your repository, and inside, your
+control file is called C<control.ini>, the value of this parameter would
+be F</control/control.ini>.
 
-By storing the control file inside the repository, it makes it easier to
-manage the control file without having to log into the Subversion
-repository server itself, and modifying the F<hooks> directory. This
-also will give you a history of who modified the control file, when, and
-why.
+=back
 
-Remember that you can protect other users from modifying the control
-file by setting this control.ini file itself. Which brings up a little
-word of caution. It is very possible to lock yourself out of modifying
-this control file by taking away permissions for you to modify this
-control file in the control file itself. If this happens, you may have
-to temporarily remove the hook in order to regrant yourself permissions
-back in this control file.
+=head2 Other Options
+
+=over 10
 
 =item -r
 
@@ -2258,7 +2300,7 @@ a null message. You can get even more complex and imaginative:
     value = ^(NONE)|(([A-Z]{3,4}-\d+(,\s+)?)+):.{10,}
     type = REGEX
 
-Imagine you have a ticketin system where ticket numbers start with a three
+Imagine you have a ticketing system where ticket numbers start with a three
 or four capital letter issue type, followed by a dash, followed by an
 issue number (much like Jira). The above will require a user to list
 one or more comma separated issue IDs, followed by a colon and a space. If
