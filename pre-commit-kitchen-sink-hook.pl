@@ -26,7 +26,7 @@ use constant {
 #
 use strict;
 use warnings;
-#use feature qw(say);
+use feature qw(say);
 #
 ########################################################################
 
@@ -206,16 +206,6 @@ foreach my $line (@control_file) {
 #
 
 $configFile->AddSection($prevSection, \%parameterHash);
-
-#
-# If the "parse" parameter was present, stop the program and dump out
-# the control file structure.
-#
-
-if ($parse) {
-    print STDERR Dumper($configFile) . "\n";
-    exit 2;
-}
 #
 ########################################################################
 
@@ -238,18 +228,28 @@ if (@ldapObjList = $configFile->GetSectionType("ldap")) {
 # FIND GROUPS WHERE USER IS A MEMBER AND STORE IN $configFile
 #
 $user = $configFile->User;
-my @memberOfList = ($user, Section::File->AllGroup);
-$configFile->AddGroup(Section::File->AllGroup);
-
+my @memberOfList;
 foreach my $groupObj ($configFile->GetSectionType("group")) {
-    foreach my $user (@memberOfList) {
-	if ($groupObj->InGroup($user)) {
-	    push @memberOfList, $groupObj->GetGroup;
-	    $configFile->AddGroup($groupObj->GetGroup);
-	}
+    if ($groupObj->InGroup($user, $configFile)) {
+	push @memberOfList, $groupObj->GetGroup;
     }
 }
+push @memberOfList, ($user, Section::File->AllGroup);
+foreach my $group (@memberOfList) {
+    $configFile->AddGroup($group)
+}
 #
+########################################################################
+
+########################################################################
+# If the "parse" parameter was present, stop the program and dump out
+# the control file structure.
+#
+
+if ($parse) {
+    print STDERR Dumper($configFile) . "\n";
+    exit 2;
+}
 #
 ########################################################################
 
@@ -1323,16 +1323,34 @@ sub VerifySection {
 # RETURNS:	Normalized name of user if it is in the group. Undef otherwise.
 #
 sub InGroup {
-    my $self =	shift;
-    my $user =	shift;
+    my $self       = shift;
+    my $user       = shift;
+    my $configFile = shift;
 
+    #
+    # User is mentioned directly in a group. 
+    #
     my %userHash = %{$self->GetAttribute(LIST)};
     if (exists $userHash{uc $user}) {
 	return uc $user;
     }
+    #
+    # User wasn't mentioned in a group. Maybe the user is mentioned
+    # in a group they're a member of
+    #
     else {
-	return;
+	my @groupList = $configFile->GetGroups;
+	my %groupHash = map { $_ => 1} @groupList;
+	foreach my $group (keys %{$self->GetAttribute(LIST)}) {
+	    if ($group =~ /^@/ and exists $groupHash{$group}) {
+		return uc $user;
+	    }
+	}
     }
+    #
+    # Group Doesn't contain User
+    #
+    return;
 }
 #
 ########################################################################
