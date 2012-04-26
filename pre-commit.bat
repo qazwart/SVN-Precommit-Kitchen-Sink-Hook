@@ -1,9 +1,10 @@
-REM ### precommit.bat script for Windows Systems
+REM precommit.bat script for Windows Systems
 
-REM ### Set the location of the "svnlook" command
-REM ### It's easier to use the "Short File Names" because you avoid spaces that way.
+REM ### Set the location of the "svnlook" command below ###
 
-set %SVN_LOOK%=C:\Progra~1\CollabNet\Subver~2\svnlook
+set %SVN_LOOK%=C:\Program Files\CollabNet\Subversion Server\svnlook
+
+
 set REPOS=%1
 set TXN=%2
 set HOOKS_DIR=%1\hooks
