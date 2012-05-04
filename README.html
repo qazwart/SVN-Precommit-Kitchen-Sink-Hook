@@ -1,0 +1,781 @@
+<?xml version="1.0" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>pre-commit-kitchen-sink-hook.pl</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link rev="made" href="mailto:_mdnsresponder@fifth.apple.com" />
+</head>
+
+<body style="background-color: white">
+
+
+<!-- INDEX BEGIN -->
+<div name="index">
+<p><a name="__index__"></a></p>
+
+<ul>
+
+	<li><a href="#name">NAME</a></li>
+	<li><a href="#synopsis">SYNOPSIS</a></li>
+	<li><a href="#description">DESCRIPTION</a></li>
+	<li><a href="#options">OPTIONS</a></li>
+	<ul>
+
+		<li><a href="#control_file_definition">Control File Definition</a></li>
+		<li><a href="#other_options">Other Options</a></li>
+	</ul>
+
+	<li><a href="#control_file_layout">CONTROL FILE LAYOUT</a></li>
+	<ul>
+
+		<li><a href="#comments">Comments</a></li>
+		<li><a href="#basic_layout">Basic Layout</a></li>
+		<ul>
+
+			<li><a href="#group">Group</a></li>
+			<li><a href="#file">File</a></li>
+			<li><a href="#property">Property</a></li>
+			<li><a href="#revprop">Revprop</a></li>
+			<li><a href="#ban">Ban</a></li>
+			<li><a href="#ldap">Ldap</a></li>
+			<ul>
+
+				<li><a href="#ldap_example">LDAP Example</a></li>
+			</ul>
+
+		</ul>
+
+	</ul>
+
+	<li><a href="#author">AUTHOR</a></li>
+	<li><a href="#copyright">COPYRIGHT</a></li>
+</ul>
+
+<hr name="index" />
+</div>
+<!-- INDEX END -->
+
+<p>
+</p>
+<h1><a name="name">NAME</a></h1>
+<p>pre-commit-kitchensink-hook.pl</p>
+<p>
+</p>
+<hr />
+<h1><a name="synopsis">SYNOPSIS</a></h1>
+<pre>
+    pre-commit-kitchen-sink-hook.pl [-file &lt;ctrlFile&gt;] \\
+        [-fileloc &lt;cntrlFile&gt;] (-r&lt;revision&gt;|-t&lt;transaction&gt;) \\
+        [-svnlook &lt;svnlookCmd&gt;] [&lt;repository&gt;]</pre>
+<pre>
+    pre-commit-kitchen-sink-hook.pl -help</pre>
+<pre>
+    pre-commit-kitchen-sink-hook.pl -options</pre>
+<p>
+</p>
+<hr />
+<h1><a name="description">DESCRIPTION</a></h1>
+<p>This is a Subversion pre-commit hook that can check for several issues
+at once:</p>
+<ul>
+<li>
+<p>This hook can verify that a particular user has permission to change a
+file. The file can be specified as either a <em>glob</em> or <em>regex</em> format.
+Even better, you can also specify an <em>ADD-ONLY</em> setting that allows you
+to create tags via an <code>svn copy</code>, but won't allow you to modify the
+files in that directory. This protects tags from being modified by a
+user.</p>
+</li>
+<li>
+<p>This hook can verify that a particular property has a particular value
+and has been set on a particular file. You can specify the files via
+<em>regex</em> or <em>glob</em> format, and you can specity the value of the
+property either via a <em>string</em>, <em>regex</em>, or <em>numeric</em> value.</p>
+</li>
+<li>
+<p>This hook can prevent the user from adding files with banned names. For
+example, in Windows you cannot have a file that starts with  <code>aux</code> or
+<code>prn</code> or <code>con</code>. You also can't have file names that have <code>:</code>, <code>^</code>,
+and several other types of characters in them. You may also want to ban
+file names that have spaces in them since these tend to cause problems
+with some utilities. This only affects newly added or renamed files, and
+not current files.</p>
+</li>
+<li>
+<p>This hook can also verify that particular revision properties are set.
+However, this only works on Subversion release 1.5 or greater. But,
+since Subversion release 1.4 is no longer supported, you really
+shouldn't be using releases older than 1.5 anyway.</p>
+</li>
+</ul>
+<p>This hook works through a control file that is in standard Windows
+Inifile format (described below). This allows you to set permissions and
+other changes without having to modify this program itself.</p>
+<p>
+</p>
+<hr />
+<h1><a name="options">OPTIONS</a></h1>
+<p>
+</p>
+<h2><a name="control_file_definition">Control File Definition</a></h2>
+<p>The <em>Control File</em> controls the way this hook operates. It can control
+the permissions you're granting to various users, your group
+definitions, what names are not allowed in your repository, and the
+properties associated with the file and revision.</p>
+<p>There are two places where the control file can be stored. The first is
+inside the Subversion repository server as a physical text file. This
+keeps the control file away from prying eyes. Unfortunately, it means
+that you must have login access to the repository server in order to
+maintain the file.</p>
+<p>The other place is inside the repository itself. This makes it easy to
+maintain. Plus, since it's in a Subversion repository, you'll see who
+changed this file, when, and why. That can be nice for auditing.
+Unfortunately, this file will be visible to everyone. If you have an
+LDAP password in that file, you'll be exposing that password to all of
+your users.</p>
+<p>You are allowed to use either a physcial control file, a control file
+stored in the repository, or both. You must have at least one or the
+other defined.</p>
+<p>Format of the control file is discussed below. See <a href="#control_file_layout">CONTROL FILE LAYOUT</a></p>
+<dl>
+<dt><strong><a name="file" class="item">-file</a></strong></dt>
+
+<dd>
+<p>The location of the physical text control file stored on the Subversion
+repository server. Normally, this is kept in the <em class="file">hooks</em> directory
+under the Subversion repository directory.</p>
+</dd>
+<dt><strong><a name="fileloc" class="item">-fileloc</a></strong></dt>
+
+<dd>
+<p>The location fo the control file inside the Subversion repository. This
+should use the <a href="#svnlook"><code>svnlook</code></a> format. For exmaple, if you have a directory
+called <em class="file">control</em> under the root of your repository, and inside, your
+control file is called <code>control.ini</code>, the value of this parameter would
+be <em class="file">/control/control.ini</em>.</p>
+</dd>
+</dl>
+<p>
+</p>
+<h2><a name="other_options">Other Options</a></h2>
+<dl>
+<dt><strong><a name="r" class="item">-r</a></strong></dt>
+
+<dd>
+<p>The Subversion repository revision. Normally, this is only used for
+testing purposes since you really want the transaction number of the
+commit and not the revision number. Good for testing. This parameter
+cannot be used at the same time as the <a href="#t"><code>-t</code></a> parameter.</p>
+</dd>
+<dt><strong><a name="t" class="item">-t</a></strong></dt>
+
+<dd>
+<p>The Subversion repository Transaction Number. This is passed to the
+scrip pre-commit found in the Repository's hook directory as a
+parameter. You need to modify the pre-commit script to pass the
+transaction number to this script.</p>
+</dd>
+<dt><strong><a name="svnlook" class="item">-svnlook</a></strong></dt>
+
+<dd>
+<p>This is the full path to the svnlook command. The full path is needed
+because for security reasons, the <code>PATH</code> environment variable is empty
+when the hook is executed. Default is /usr/bin/svnlook.</p>
+</dd>
+<dt><strong><a name="help" class="item">-help</a></strong></dt>
+
+<dd>
+<p>Prints a helpful message showing the different parameters used in
+running this pre-commit hook script.</p>
+</dd>
+<dt><strong><a name="options" class="item">-options</a></strong></dt>
+
+<dd>
+<p>Prints a helpful message showing a detailed explanation of  the
+different parameters used in running this pre-commit hook script.</p>
+</dd>
+<dt><strong><a name="repository" class="item">&lt;repository&gt;</a></strong></dt>
+
+<dd>
+<p>The location of the Subversion repository's physical directory. Default
+is the parent directory.</p>
+</dd>
+</dl>
+<p>
+</p>
+<hr />
+<h1><a name="control_file_layout">CONTROL FILE LAYOUT</a></h1>
+<p>The hook is controlled by a user defined control file. The control is in
+Windows' IniFile layout. This layout consists of <em>Comments</em>, <em>Section
+Headings</em>, and <em>Parameter Lines</em>.</p>
+<p>
+</p>
+<h2><a name="comments">Comments</a></h2>
+<p>Comment lines begin with either a <code>#</code>, or a <code>;</code> or a <code>'</code>. Blank lines
+are also ignored. All other lines must either be a Parameter Line or a
+Section Heading.</p>
+<p>
+</p>
+<h2><a name="basic_layout">Basic Layout</a></h2>
+<p>The basic layout is a Section Heading followed by a bunch of Parameter
+Lines.</p>
+<p>Section headings are enclosed in square brackets. The first word
+in a section heading is the type of section it is (Group, File,
+Property, Revprop, or Ban). The rest is a description of that section
+heading. For example:</p>
+<pre>
+    [File Users may not modify a tag.]</pre>
+<p>In the above example, the section is <em>File</em> and the description is
+<em>Users may not modify a tag.</em>.</p>
+<p>Unlike in <em>Config/IniFile</em>, the descriptions don't have to be unique.
+However, the descriptions are used in user error messages, so be sure
+to put in a good description that is user friendly. For example:</p>
+<pre>
+    [File Only approved users may modify the Control File]</pre>
+<p>is a better section heading than:</p>
+<pre>
+    [File Read-only on Control.properties]</pre>
+<p>Under each section is a series of Parameter lines that apply to that section.</p>
+<p>Parameter Lines are in the form of</p>
+<pre>
+    &lt;Key&gt; = &lt;Value&gt;</pre>
+<p>where <em>Key</em> is the parameter key, and <em>Value</em> is the value for that
+parameter. Notice that the two are separated by an equal sign. Spaces
+around the equal sign are optional, and the <em>Value</em> is the entire line
+including spaces on the end of the line, so be careful.</p>
+<p>The layouts of the various sections and their permitted parameters are
+explained below. Note that section type names and parameter keys are
+case insensitive.</p>
+<p>
+</p>
+<h3><a name="group">Group</a></h3>
+<p>This is used to define user groups which can be used to define file
+permissions. This makes it easier to keep track of file permissions as
+people move from project to project. You only have to change the group
+definition.</p>
+<p>The section layout is thus:</p>
+<pre>
+    [GROUP &lt;GroupName&gt;]
+    users = &lt;ListOfUsers&gt;</pre>
+<p>The <code>GroupName</code> is the name of the group. Group names should be
+composed of just letters, numbers, and underscores, and should contain
+no white space. Group names are case insensitive.</p>
+<p>User names in this hook substitute an underscore for a space and ignore case
+For example, if the user signs into Subversion as <em>john doe</em>, their user name
+will become <em>JOHN_DOE</em>. User names cannot start with an <em>at sign</em> (@).</p>
+<p>The <code>ListOfUsers</code> is either a whitespace or comma separated list of user
+names. This list can also contain the names of other groups. However, the
+groups are calculated from the top of the control file to the bottom, so
+if group &quot;A&quot; is contained inside group &quot;B&quot;, you must define group &quot;A&quot; before
+you define group &quot;B&quot;.</p>
+<pre>
+    [GROUP developers]
+    users = larry, moe, curly</pre>
+<pre>
+    [group admins]
+    users = tom, dick, harry</pre>
+<pre>
+    [group foo]
+    users = @developers, @admins, @bar, alice</pre>
+<pre>
+    [group bar]
+    users = bob, ted, carol</pre>
+<p>In the above example, everyone in group <em>DEVELOPERS</em> and group <em>ADMINS</em>
+is in group <em>FOO</em>. However, members of group <em>BAR</em> won't be included.</p>
+<p>
+</p>
+<h3><a name="file">File</a></h3>
+<p>A file Section Heading starts with the word <a href="#file"><code>file</code></a> and an explanation
+of that section. It then consists of the following parameters:</p>
+<dl>
+<dt><strong><a name="match" class="item">match</a></strong></dt>
+
+<dd>
+<p>A Perl style expanded regular expression matching the files that are
+affected by this permission definition. Note this cannot be used with
+the <a href="#file"><code>file</code></a> parameter.</p>
+<p>If the <a href="#match"><code>match</code></a> string contains the text &lt;USER&gt;, this text
+will be substituted by the name of the user from the <code>svnlook author</code>
+command. This is done to allow you to create special user directories or
+files that only that user can modify. For example:</p>
+<pre>
+    [FILE Users can only modify their own watchfiles]
+    match = ^/watchfiles/.*
+    access = read-only
+    users = @ALL</pre>
+<pre>
+    [FILE Allow user to edit their own watchfiles]
+    match = ^/watchfiles/&lt;USER&gt;\.cfg$
+    access = read-write
+    users = @ALL</pre>
+<p>The above will prevent users from modifying each other watch files, but
+will allow them to modify their own watch files.</p>
+<p><strong>Word o' Warning</strong>: This script normalizes user ID to all caps. This
+means that if the user name is <em>bob</em>, it will become <em>BOB</em>. Thus,
+<em>&lt;USER</em> &gt;&gt; also becomes <em class="file">BOB</em>.</p>
+</dd>
+<dt><strong>file</strong></dt>
+
+<dd>
+<p>An Ant style  globbing expression matching the files that are affected
+by this permission definition. This cannot be used with the <a href="#match"><code>match</code></a>
+parameter.</p>
+<p>Regular expressions are much more flexible, but most people are not too
+familiar with them. In a file glob expression, an asterisk (*)
+represents any number of characters inside of a directory. Double
+asterisk (**) are used to represent any number of directory levels. A
+single quesion mark (?) represents any character. All glob expressions
+are anchored to the front of the line and the back of the line.</p>
+<p>Therefore:</p>
+<pre>
+    file = *.jpg</pre>
+<p>does not mean any file that end with <code>jpg</code>, but only files in the root
+of the repository that end with <code>jpg</code>. To mean all files, you need to
+unanchor the glob expression as thus:</p>
+<pre>
+    file = **/*.jpg</pre>
+<p>Notice too that directory names will end with a final slash which is
+a great way to distinguish between a file being added or deleted
+and a directory being added or deleted. For example:</p>
+<pre>
+    file = /tags/*/</pre>
+<p>will refer only to directories that are subdirectories directly under the
+tags directory, and not to files. You'll see this is a great way to protect
+your tagged versions from being modified when <a href="#access">access</a> is discussed below.</p>
+<p>If the <a href="#file"><code>file</code></a> string contains the text <code>&lt;USER&gt;</code>, this text
+will be substituted by the name of the user from the <code>svnlook author</code>
+command. This is done to allow you to create special user directories or
+files that only that user can modify. For example:</p>
+<pre>
+    [FILE Users can only modify their own watchfiles]
+    file = /watchfiles/**
+    access = read-only
+    users = @ALL</pre>
+<pre>
+    [FILE Allow user to edit their own watchfiles]
+    file = /watchfiles/&lt;USER&gt;.cfg
+    access = read-write
+    users = @ALL</pre>
+<p>The above will prevent users from modifying each other watch files, but
+will allow them to modify their own watch files.</p>
+</dd>
+<dt><strong><a name="users" class="item">users</a></strong></dt>
+
+<dd>
+<p>A list of all users who are affected by this type of access. Groups can
+be used in a user list if preceeded by an <em>at sign</em> (@). There is one
+special group called <code>@ALL</code> that represents all users.</p>
+</dd>
+<dt><strong><a name="access" class="item">access</a></strong></dt>
+
+<dd>
+<p>The access permission on that file. Notice that there is no permission
+for preventing a user from seeing the contents of the file, only for
+changing the file. This is because the trigger is on the <code>commit</code>
+and not on <code>checkout</code>. If you need to prevent people from seeing
+the file, you must do this with your repository access.</p>
+<p>Access is determined in a top down fashion in the control file. The first
+entry might take a particular user's ability to commit changes to a particular
+file, but a section further down might allow that same user the ability
+to commit changes to that same file. While the third might remove it again.</p>
+<p>Access is granted or denied by the <strong>last</strong> matching access grant.</p>
+<dl>
+<dt><strong><a name="read_write" class="item">read-write</a></strong></dt>
+
+<dd>
+<p>Files marked as <a href="#read_write"><code>read-write</code></a> means that the user may commit changes to
+the file. They can add a new file or directory by that name, delete it, or
+modify it.</p>
+</dd>
+<dt><strong><a name="read_only" class="item">read-only</a></strong></dt>
+
+<dd>
+<p>Files marked as <a href="#read_only"><code>read-only</code></a> means that the user cannot commit changes to
+that file. The user is not allowed to create, delete, or modify this
+file.</p>
+</dd>
+<dt><strong><a name="no_delete" class="item">no-delete</a></strong></dt>
+
+<dd>
+<p>Files marked as <a href="#no_delete"><code>no-delete</code></a> allow the user to modify and even create the
+file, but not delete the file. This is good for a file that needs to be
+modified, but you don't want to be removed.</p>
+</dd>
+<dt><strong><a name="no_add" class="item">no-add</a></strong></dt>
+
+<dd>
+<p>Files marked as <a href="#no_add"><code>no-add</code></a> allow the user to modify the file if it already
+exists, and are allowed to delete a file if it already exists, but they
+are not allowed to add a new file to the repository. This is combined
+with the <a href="#no_delete">no-delete</a> option above to allow people to modify files, but
+not to add new files or delete old ones from the repository.</p>
+</dd>
+<dt><strong><a name="add_only" class="item">add-only</a></strong></dt>
+
+<dd>
+<p>This is a special access permission that will allow a user to add, but not
+modify a file with that matching pattern or regex. This is mainly used to 
+ensure that tags may be created but not modified. For example, if you have
+a <code>/tags</code> directory, you can do this:</p>
+<pre>
+    [FILE Users cannot modify any tags]
+    file = /tags/**
+    access = read-only
+    user = @ALL</pre>
+<pre>
+    [FILE Users can add tags to the tag directory]
+    file = /tags/*/
+    access = add-only
+    user = @ALL</pre>
+<p>The first <em>File</em> section removes the user's ability to make any changes in
+the <code>/tags</code> directory. The second <em>File</em> section allows users to only add
+directories directly under the <code>/tags</code> directory. Thus, a user can do
+something like this:</p>
+<pre>
+    $ svn cp svn://localhost/trunk svn://localhost/tags/V-1.3</pre>
+<p>to tag version 1.3 of the source, but then can't modify, add, or delete any
+files under the <code>/tags/V-1.3</code> directory. Also, users cannot do something
+like this:</p>
+<pre>
+    $ svn cp svn://localhost/trunk svn://localhost/tags/V-1.3/BOGUS</pre>
+<p>because the ability to copy a directory is only allowed in the <code>/tags/</code>
+directory and no subdirectory.</p>
+<p>Nor, can a user do this:</p>
+<pre>
+    $ touch tags/foo.txt
+    $ svn add tags/foo.txt
+    $ svn commit -m&quot;Adding a file to the /tags directory&quot;</pre>
+<p>Since only directories can be added to the <code>/tags</code> directory.</p>
+</dd>
+</dl>
+</dd>
+<dt><strong><a name="case" class="item">case</a></strong></dt>
+
+<dd>
+<p>This is an optional parameter and its only valid value is <em>ignore</em>. This
+allows you to ignore case when looking at file names. For example:</p>
+<pre>
+    [file Bob can edit our batch files]
+    file = **/*.bat
+    access = read-write
+    users = bob
+    case = ignore</pre>
+<p>This will match every Batch file with a suffix of <em>*.bat</em> or <em>*.BAT</em> or
+even <em>*.Bat</em> and <em>*.BaT</em>.</p>
+</dd>
+</dl>
+<p>
+</p>
+<h3><a name="property">Property</a></h3>
+<p>This section allows you to set what properties and what those property
+values must be on a particular set of files. The section heading looks
+like this:</p>
+<pre>
+    [property &lt;purpose&gt;]</pre>
+<p>Where <code>purpose</code> is the purpose of that property. This is used as an
+error message if a file fails to have a required property or that
+property is set to the wrong value. The following parameters are used:</p>
+<dl>
+<dt><strong>match</strong></dt>
+
+<dd>
+<p>A Perl style expanded regular expression matching the files that are
+affected by this property. Note this cannot be used with the <a href="#file"><code>file</code></a>
+parameter.</p>
+</dd>
+<dt><strong>file</strong></dt>
+
+<dd>
+<p>A glob type expression matching the files that are affected by this
+property. Note this cannot be used with the <a href="#match"><code>match</code></a> parameter.</p>
+</dd>
+<dt><strong>case</strong></dt>
+
+<dd>
+<p>An optional parameter and the only permitted value is <em>ignore</em>. This
+means to ignore the case of file names (not property values! They're
+still case sensitive)</p>
+</dd>
+<dt><strong><a name="property" class="item">property</a></strong></dt>
+
+<dd>
+<p>The name of the property that should be on this file.</p>
+</dd>
+<dt><strong><a name="value" class="item">value</a></strong></dt>
+
+<dd>
+<p>The value the property should have. Note that this can be either a
+string, a number of a regular expression that the value should match.
+This is determined by the <em>type</em> parameter.</p>
+</dd>
+<dt><strong><a name="type" class="item">type</a></strong></dt>
+
+<dd>
+<p>The type of value that the <em>value</em> parameter actually contains. This
+can be <code>string</code>, <code>number</code>, or <a href="#regex"><code>regex</code></a>.</p>
+</dd>
+</dl>
+<p>
+</p>
+<h3><a name="revprop">Revprop</a></h3>
+<p>This section allows you to set what revision properties and what
+those property values must be when committing a revision.</p>
+<pre>
+    [revprop &lt;purpose&gt;]</pre>
+<p>Where <code>purpose</code> is the purpose of that property. This is used as an
+error message if the revision fails to have a required revision property
+or that property is set to the wrong value.</p>
+<p>The Revision property of <code>svn:log</code> is a special revision property
+that all Subversion clients and server versions can use. This is
+set by the <code>-m</code> parameter in the <code>svn commit</code> command. This can
+be used to verify that the commit log message is in the correct format.</p>
+<p>Here is an example:</p>
+<pre>
+    [revprop Users must have at least 10 characters of a commit message]
+    property = svn:log
+    value = ^.{10,}
+    type = REGEX</pre>
+<p>The above requires a user to create an at least 10 character commit
+message when committing a change. This will prevent a user from leaving
+a null message. You can get even more complex and imaginative:</p>
+<pre>
+    [revprop Users must include a Jira ticket number with a commit, or NONE]
+    property = svn:log
+    value = ^(NONE)|(([A-Z]{3,4}-\d+(,\s+)?)+):.{10,}
+    type = REGEX</pre>
+<p>Imagine you have a ticketing system where ticket numbers start with a three
+or four capital letter issue type, followed by a dash, followed by an
+issue number (much like Jira). The above will require a user to list
+one or more comma separated issue IDs, followed by a colon and a space. If
+there is no issue ID, the user can use the word &quot;NONE&quot;. This has to
+be followed by at least a ten character description. The following
+would be valid commit comments:</p>
+<pre>
+    NONE: Fixed the indentation of a few files.
+    FOO-123: Added a new format to match the specs
+    BAR-334, BAZ-349: Fixed the display bug</pre>
+<p>While the following wouldn't be allowed:</p>
+<pre>
+    Fixed stuff
+    AAAA
+    FOO-123: SSDd</pre>
+<p>If both the client and server run a release of Subversion 1.5 or
+greater, you can use other revision properties on a commit.</p>
+<p>Revision properties are set with the <code>--with-revprop</code> on the
+<code>svn commit</code> command. Revision properties other than <code>svn:log</code>
+can only be used when the Subversion client and server revisions
+are 1.5 or newer.</p>
+<p><strong>WARNING:</strong> Users with a Subversion client older than 1.5
+won't be allowed to commit changes if revision properties other
+than <code>svn:log</code> are required.</p>
+<dl>
+<dt><strong>property</strong></dt>
+
+<dd>
+<p>The name of the revision property that should be set in this revision.</p>
+</dd>
+<dt><strong>value</strong></dt>
+
+<dd>
+<p>The value the revprop should have. Note that this can be either a
+string, a number of a regular expression that the value should match.
+This is determined by the <em>type</em> parameter.</p>
+</dd>
+<dt><strong>type</strong></dt>
+
+<dd>
+<p>The type of value that the <em>value</em> parameter actually contains. This
+can be <code>string</code>, <code>number</code>, or <a href="#regex"><code>regex</code></a>.</p>
+</dd>
+</dl>
+<p>
+</p>
+<h3><a name="ban">Ban</a></h3>
+<pre>
+    This section allows you to ban certain file names when you add a new
+    file. For example, in Unix, a file can be called C&lt;aux.java&gt;, but
+    such a name would be illegal in Windows.</pre>
+<pre>
+    The section heading looks like this:</pre>
+<pre>
+    [ban &lt;description&gt;]</pre>
+<pre>
+    where E&lt;lt&gt;descriptionE&lt;gt&gt; is the description of that ban. This is
+    returned to the user when a banned name is detected.</pre>
+<dl>
+<dt><strong>match</strong></dt>
+
+<dd>
+<p>A Perl style regular expression matching the banned names. Note this
+cannot be used with the <a href="#file"><code>file</code></a> parameter.</p>
+</dd>
+<dt><strong>file</strong></dt>
+
+<dd>
+<p>An Ant style globbing expression that matches the banned names. Note
+this cannot be used with the <code>item</code> parameter.</p>
+</dd>
+<dt><strong>case</strong></dt>
+
+<dd>
+<p>This is an optional parameter. If set to <em>ignore</em>, it will ignore the
+case in file names.</p>
+</dd>
+</dl>
+<p>
+</p>
+<h3><a name="ldap">Ldap</a></h3>
+<p>This section defines an LDAP server for the purposes of pulling of LDAP
+groups to use in this hook. For example, if you have a Windows Active
+Directory server, you could use your Windows groups to put users into
+groups for this particular hook.</p>
+<p>Due to the complexities of the LDAP query and the wide variety used by
+various groups, it is somewhat necessary to play loose and fast with the
+way attributes work.</p>
+<p>The section heading will look like this:</p>
+<pre>
+    [ldap &lt;ldapURI or server&gt;]</pre>
+<p>Where the name of the LDAP server (or full URI can be contained in the
+section name.</p>
+<dl>
+<dt><strong><a name="ldap_xxxxx" class="item">ldap:xxxxx</a></strong></dt>
+
+<dd>
+<p>This allows you to further define how to do ldap binding. The &quot;xxxx&quot; is
+the option in the Net::LDAP constructor. For example, <a href="#ldap_scheme"><code>ldap:scheme</code></a> will
+be the <em>scheme</em> option in the Net::LDAP constructor. The most common ones
+are:</p>
+<ul>
+<li><strong><a name="ldap_password" class="item">ldap:password</a></strong>
+
+<p>The password for the ldap server</p>
+</li>
+<li><strong><a name="ldap_scheme" class="item">ldap:scheme</a></strong>
+
+<p>This could be <em class="file">ldap</em> or <em class="file">ldaps</em></p>
+</li>
+<li><strong><a name="ldap_port" class="item">ldap:port</a></strong>
+
+<p>The port number for LDAP.</p>
+</li>
+</ul>
+</dd>
+<dt><strong><a name="bind" class="item">bind</a></strong></dt>
+
+<dd>
+<p>The <em>Distinguished Name</em> used by the LDAP server for <em>binding</em>
+(logging in) to the ldap server. If not given, anonymous binding will be
+done.</p>
+</dd>
+<dt><strong><a name="bind_xxxx" class="item">bind:xxxx</a></strong></dt>
+
+<dd>
+<p>This is an option used in the <em class="file">bind</em> method in the <a href="/Net/LDAP.html">the Net::LDAP manpage</a> class.
+The most common ones are:</p>
+<ul>
+<li><strong><a name="bind_password" class="item">bind:password</a></strong>
+
+<p>The password for the Distinguish name.</p>
+</li>
+</ul>
+</dd>
+<dt><strong><a name="filter" class="item">filter</a></strong></dt>
+
+<dd>
+<p>This is the attribute you are filtering on via the Ldap name of the
+user. In Windows Active Directory, this is usually something like
+<code>sAMAccountName</code>.</p>
+<p>This is used by the <em>search</em> method of the Net::LDAP module. For
+example, let's say that you've filtered on <code>sAMAccountName</code> for Ldap
+user <code>johnsmith</code>. The call to the Net::LDAP search method will
+look something like this:</p>
+<pre>
+    my $search = $ldap-&gt;search(filter =&gt; &quot;sAMAccountName=johnsmith&quot;);</pre>
+</dd>
+<dt><strong><a name="search_xxxxxx" class="item">search:xxxxxx</a></strong></dt>
+
+<dd>
+<p>Other attributes to use for the search method. Common ones are</p>
+<ul>
+<li><strong><a name="search_attrs" class="item">search:attrs</a></strong>
+
+<p>A list of attributes to return.</p>
+</li>
+</ul>
+</dd>
+<dt><strong><a name="groupattr" class="item">groupAttr</a></strong></dt>
+
+<dd>
+<p>The attribute in the member LDAP record that contains the group names.
+    It is normally <code>memberOF</code> in Window's ActiveDirectory.</p>
+</dd>
+<dt><strong><a name="regex" class="item">regex</a></strong></dt>
+
+<dd>
+<p>When LDAP returns a group, it returns the full <em>Common Name</em> for that
+group. Normally, you only want the first part of the name. For example,
+the LDAP <em>CN</em> might be:</p>
+<pre>
+    CN=AppTeam,OU=Groups,OU=Accounts,DC=mycorp,DC=com</pre>
+<p>but you want just the <em>AppTeam</em> as the group name. You can use this
+to pinpoint the group name in the expression. You use parentheses to
+mark the place in the regular expression where you will find the
+name of the group. For example, the following will pinpoint the
+name of the group (<em>AppTeam</em>) in the above expression:</p>
+<pre>
+        regex = ^[^=]+=([^,]+)</pre>
+<p>Note that the quoting slashes are not around the regular expression.
+<strong>DO NOT INCLUDE THEM!</strong>. Otherwise, your group anames will be messed up.</p>
+<p>In fact, the above regular expression is pretty much the stanadard one
+that you will use.</p>
+<p>Note that the group name will be <em>normalized</em> which means that it will
+be uppercased and blanks will be replaced by underscores.</p>
+</dd>
+</dl>
+<p>
+</p>
+<h4><a name="ldap_example">LDAP Example</a></h4>
+<p>Here's an example of what an LDAP section might look like. It pretty
+much follows what someone who uses Windows Active Directory for
+corporate access.</p>
+<pre>
+        [ldap ldap://ldapserver.mycorp.com:389]
+        bind = CN=subversion,OU=Users,OU=Accounts,DC=mycorp,DC=com
+        bind:password = Sw0rdfi$h
+        filter = sAMAccountName
+        groupAttr = memberOf
+        regex = ^CN=([^,]+),</pre>
+<p>
+</p>
+<hr />
+<h1><a name="author">AUTHOR</a></h1>
+<p>David Weintraub
+<em><a href="mailto:mailto:david@weintraub.name">mailto:david@weintraub.name</a></em></p>
+<p>
+</p>
+<hr />
+<h1><a name="copyright">COPYRIGHT</a></h1>
+<p>Copyright (c) 2010 by David Weintraub. All rights reserved. This
+program is covered by the open source BMAB license.</p>
+<p>The BMAB (Buy me a beer) license allows you to use all code for whatever
+reason you want with these three caveats:</p>
+<ol>
+<li>
+<p>If you make any modifications in the code, please consider sending them
+to me, so I can put them into my code.</p>
+</li>
+<li>
+<p>Give me attribution and credit on this program.</p>
+</li>
+<li>
+<p>If you're in town, buy me a beer. Or, a cup of coffee which is what I'd
+prefer. Or, if you're feeling really spendthrify, you can buy me lunch.
+I promise to eat with my mouth closed and to use a napkin instead of my
+sleeves.</p>
+</li>
+</ol>
+
+</body>
+
+</html>
