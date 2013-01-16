@@ -228,15 +228,13 @@ if (@ldapObjList = $configFile->GetSectionType("ldap")) {
 # FIND GROUPS WHERE USER IS A MEMBER AND STORE IN $configFile
 #
 $user = $configFile->User;
+$configFile->AddGroup(Section::File->AllGroup);
+
 my @memberOfList;
 foreach my $groupObj ($configFile->GetSectionType("group")) {
     if ($groupObj->InGroup($user, $configFile)) {
-	push @memberOfList, $groupObj->GetGroup;
+	$configFile->AddGroup($groupObj->GetGroup);
     }
-}
-push @memberOfList, ($user, Section::File->AllGroup);
-foreach my $group (@memberOfList) {
-    $configFile->AddGroup($group)
 }
 #
 ########################################################################
@@ -1810,7 +1808,7 @@ pre-commit-kitchensink-hook.pl
 
     pre-commit-kitchen-sink-hook.pl [-file <ctrlFile>] \\
 	[-fileloc <cntrlFile>] (-r<revision>|-t<transaction>) \\
-	[-svnlook <svnlookCmd>] [<repository>]
+	[-parse] [-svnlook <svnlookCmd>] [<repository>]
 
     pre-commit-kitchen-sink-hook.pl -help
 
@@ -1932,6 +1930,12 @@ transaction number to this script.
 This is the full path to the svnlook command. The full path is needed
 because for security reasons, the C<PATH> environment variable is empty
 when the hook is executed. Default is /usr/bin/svnlook.
+
+=item -parse
+
+Used mainly for debugging. This will dump out the entire configuration file
+structure, so you can verify your work. It will also test the control file
+and let you know if there are any errors.
 
 =item -help
 
