@@ -1243,12 +1243,18 @@ sub AUTOLOAD {
 
     our $AUTOLOAD;
 
+    #
+    # From Advanced Perl Chapter 8.2
+    # Never propagate DESTROY methods
+    #
+    return if $AUTOLOAD =~ /::DESTROY$/;
+
     (my $subClass = $AUTOLOAD) =~ s/.*:://;
 
     if ((my $attribute = $subClass) =~ s/^Get//) {
 	return $self->GetAttribute($attribute);
     }
-    croak qq(Non existant subroutine called $AUTOLOAD);
+    croak qq(Nonexistent subroutine called $AUTOLOAD in sub AUTOLOAD.);
 }
 #
 ########################################################################
