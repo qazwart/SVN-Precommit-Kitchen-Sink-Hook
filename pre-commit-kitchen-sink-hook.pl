@@ -94,6 +94,7 @@ if (not (defined $transaction or defined $revision)) {
 }
 
 if (not defined $controlFile and not defined $controlFileLocation) {
+
     die qq(ERROR: No control file location defined. You must either have\n)
 	. qq(a physical control file and/or one in the repository.\n);
 }
