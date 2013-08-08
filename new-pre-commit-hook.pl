@@ -210,7 +210,7 @@ sub Rev_param {
     if ( defined $rev_param and  $rev_param =~ /^-[tr]/ )  {
 	$self->{REV_PARAM} = $rev_param;
     }
-    elsif ( defined $rev_param and $rev_param != /^[tr]/ ) {
+    elsif ( defined $rev_param and $rev_param !~ /^[tr]/ ) {
 	croak qq(Revision parameter must start with "-t" or "-r");
     }
     return $self->{REV_PARAM};
@@ -221,6 +221,9 @@ sub Svnlook {
     my $svnlook		= shift;
 
     if ( defined $svnlook ) {
+	if ( not -x $svnlook ) {
+	    croak qq(The program "$svnlook" is not an executable program");
+	}
 	$self->{SVNLOOK} = $svnlook;
     }
 
@@ -236,6 +239,7 @@ sub Svnlook {
 # Stores Location, Type, and Contents of the Control File
 #
 package Control_file;
+use Data::Dumper;
 use autodie;
 use Carp;
 
@@ -247,35 +251,40 @@ use constant {
 sub new {
     my $class		= shift;
     my $type		= shift;
-    my $file		= shift;
+    my $location	= shift;
     my $configuration	= shift;	#Needed if file is in repository
 
     if ( not defined $type ) {
 	croak qq/Must pass in control file type ("R" = in repository. "F" = File on Server")/;
     }
-    if ( not defined $file ) {
+    if ( not defined $location ) {
 	croak qq(Must pass in Control File's location);
     }
 
-    if ( not $configuration->isa( "Configuration" ) ) {
-	croak qq(Configuration parameter needs to be of a Class "Configuration");
-    }
     if ( $type eq FILE_IN_REPO and not defined $configuration ) {
 	croak qq(Need to pass a configuration when control file is in the repository);
+	if ( not $configuration->isa( "Configuration" ) ) {
+	    croak qq(Configuration parameter needs to be of a Class "Configuration");
+	}
     }
 
     my $self = {};
     bless $self, $class;
-    $self->Location($type);
-    $self->File($file);
+    $self->Type($type);
+    $self->Location($location);
 
     #
     # Get the contents of the file
     #
 
     if ( $type eq FILE_ON_SERVER ) {
-	open my $control_file_fh, "<", $file;
-	my @file_contents = < $control_file_fh >;
+	my $control_file_fh;
+	eval { open $control_file_fh, "<", $location; };
+	if ( $@ ) {
+	    croak qq(Invalid Control file "$location" on server.);
+	}
+	say Dumper $control_file_fh;
+	my @file_contents = <$control_file_fh>;
 	close $control_file_fh;
 	chomp @file_contents;
 	$self->Contents(\@file_contents);
@@ -286,12 +295,11 @@ sub new {
 	my $repository  = $configuration->Repository;
 	my @file_contents;
 	    eval {
-		@file_contents = qx($svnlook cat $rev_param $repository $file);
+		@file_contents = qx($svnlook cat $rev_param $repository $location);
 	    };
 	    if ($@) {
-		croak qq(Couldn't retreive contents of control file "$file" from repository "$repository");
+		croak qq(Couldn't retreive contents of control file "$location" from repository "$repository");
 	    }
-	    chomp @file_contents;
 	    $self->Contents(\@file_contents);
     }
     return $self;
@@ -328,7 +336,7 @@ sub Contents {
     if ( @contents ) {
 	@contents = grep { not /^\s*[#;]/ } @contents;  #Remove comment lines
 	@contents = grep { not /^\s*$/ } @contents;  #Remove blank lines
-	my $self->{CONTENTS} = \@contents;
+	$self->{CONTENTS} = \@contents;
     }
     @contents = @{ $self->{CONTENTS} };
     return wantarray ? @contents : \@contents;
