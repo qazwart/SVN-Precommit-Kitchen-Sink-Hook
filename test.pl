@@ -28,7 +28,11 @@ use constant {		#Revision file Type (package Configuration)
 };
 
 
-my $file = Section->new( "file", "This is a description" );
+my %parameters = (
+    file	=> '**/* */**',
+);
+
+my $file = Section->new( "ban", "This is a description", \%parameters );
 say Dumper $file;
 
 ########################################################################
@@ -225,6 +229,7 @@ sub Contents {
 #
 
 package Section;
+use Data::Dumper;
 use Carp;
 
 sub new {
@@ -274,19 +279,19 @@ sub Parameters {
     my %methods;
     for my $parameter ( keys %parameters ) {
 	my $method = ucfirst lc $parameter;
-	
+	if ( not $self->can( "$method" ) ) {
+	    croak qq(Invalid parameter "$method" passed);
+	}
 	$self->$method( $parameters{$parameter} );
     }
 
     #
     # Make sure all required parameters are here
     #
-    if ( @req_methods ) {
-	for my $method ( @req_methods ) {
-	    $method = ucfirst lc $method;
-	    if ( not $self->$method ) {
-		croak qq(Missing required parameter "$method");
-	    }
+    for my $method ( @req_methods ) {
+	$method = ucfirst lc $method;
+	if ( not $self->$method ) {
+	    croak qq(Missing required parameter "$method");
 	}
     }
     return 1;
@@ -335,7 +340,7 @@ sub Parameters {
     my $self		= shift;
     my $parameter_ref	= shift;
 
-    $self->SUPER::Parameters( $parameter_ref, @{[REQ_ATTRIBUTES]} );
+    $self->SUPER::Parameters( $parameter_ref, \@{[REQ_ATTRIBUTES]} );
 }
 
 sub Users {
@@ -361,7 +366,7 @@ package Section::File;
 use base qw(Section);
 use Carp;
 
-use constant REQ_ATTRIBUTES 	=> qw(File Users Access);
+use constant REQ_ATTRIBUTES 	=> qw(Match Users Access);
 use constant VALID_CASES	=> qw(match ignore);
 use constant VALID_ACCESSES	=> qw(read-only read-write add-only no-delete no-add);
 
@@ -369,7 +374,7 @@ sub Parameters {
     my $self		= shift;
     my $parameter_ref	= shift;
 
-    $self->SUPER::Parameters( $parameter_ref, @{[REQ_ATTRIBUTES]} );
+    $self->SUPER::Parameters( $parameter_ref, \@{[REQ_ATTRIBUTES]} );
 }
 
 sub Match {
@@ -459,7 +464,7 @@ sub Parameters {
     my $self		= shift;
     my $parameter_ref	= shift;
 
-    $self->SUPER::Parameters( $parameter_ref, @{[REQ_PARAMETERS]} );
+    $self->SUPER::Parameters( $parameter_ref, \@{[REQ_PARAMETERS]} );
 }
 
 sub Match {
@@ -469,7 +474,7 @@ sub Match {
     if ( defined $match ) {
 	$self->{MATCH} = $match;
     }
-    return $match;
+    return $self->{MATCH};
 }
 
 sub File {
@@ -531,7 +536,9 @@ sub Type {
 	if ( not exists $valid_types{$type} ) {
 	    croak qq(Invalid type of "$type" Property type passed);
 	}
+	$self->{TYPE} = $type;
     }
+    return $self->{TYPE};
 }
 #
 # END: Class: Section::Property
@@ -552,7 +559,7 @@ sub Parameters {
     my $self		= shift;
     my $parameter_ref	= shift;
 
-    $self->SUPER::Parameters( $parameter_ref, @{[REQ_PARAMETERS]} );
+    $self->SUPER::Parameters( $parameter_ref, \@{[REQ_PARAMETERS]} );
 }
 
 sub Case {
@@ -602,7 +609,9 @@ sub Type {
 	if ( not exists $valid_types{$type} ) {
 	    croak qq(Invalid type of "$type" Property type passed);
 	}
+	$self->{TYPE} = $type;
     }
+    return $self->{TYPE};
 }
 #
 # END: Class: Section::Revprop

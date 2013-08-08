@@ -196,7 +196,7 @@ sub Repository {
     my $repository	= shift;
 
     if ( defined $repository ) {
-	$repository s{\\}{/}g;	#Change from Windows to Unix file separators
+	$repository =~ s{\\}{/}g;	#Change from Windows to Unix file separators
 	$self->{REPOSITORY} = $repository;
     }
 
@@ -207,8 +207,8 @@ sub Rev_param {
     my $self		= shift;
     my $rev_param	= shift;
 
-    if ( defined $rev_param and  $rev_param =~ /^-[tr]/ ) 
-	$self->{REV_PARAM} = $revision;
+    if ( defined $rev_param and  $rev_param =~ /^-[tr]/ )  {
+	$self->{REV_PARAM} = $rev_param;
     }
     elsif ( defined $rev_param and $rev_param != /^[tr]/ ) {
 	croak qq(Revision parameter must start with "-t" or "-r");
@@ -299,7 +299,7 @@ sub new {
 
 sub Location {
     my $self		= shift;
-    my $loction		= shift;:
+    my $location	= shift;
 
     if ( defined $location ) {
 	$self->{LOCATION} = $location;
@@ -344,6 +344,7 @@ sub Contents {
 #
 
 package Section;
+use Data::Dumper;
 use Carp;
 
 sub new {
@@ -392,20 +393,20 @@ sub Parameters {
     #
     my %methods;
     for my $parameter ( keys %parameters ) {
-	$method = ucfirst lc $parameter;
-	
+	my $method = ucfirst lc $parameter;
+	if ( not $self->can( "$method" ) ) {
+	    croak qq(Invalid parameter "$method" passed);
+	}
 	$self->$method( $parameters{$parameter} );
     }
 
     #
     # Make sure all required parameters are here
     #
-    if ( @req_methods ) {
-	for my $method ( @req_methods ) {
-	    $method = ucfirst lc $method;
-	    if ( not $self->$method ) {
-		croak qq(Missing required parameter "$method");
-	    }
+    for my $method ( @req_methods ) {
+	$method = ucfirst lc $method;
+	if ( not $self->$method ) {
+	    croak qq(Missing required parameter "$method");
 	}
     }
     return 1;
@@ -445,7 +446,7 @@ sub glob2regex {
 # CLASS: Section::Group
 #
 package Section::Group;
-use base = qw(Section);
+use base qw(Section);
 use Carp;
 
 use constant REQ_ATTRIBUTES	=> qw(Users);
@@ -454,7 +455,7 @@ sub Parameters {
     my $self		= shift;
     my $parameter_ref	= shift;
 
-    $self->SUPER::Parameters( $parameter_ref, @{[REQ_ATTRIBUTES]} );
+    $self->SUPER::Parameters( $parameter_ref, \@{[REQ_ATTRIBUTES]} );
 }
 
 sub Users {
@@ -476,19 +477,19 @@ sub Users {
 ########################################################################
 # CLASS: Section::File
 #
-package Section::File
-
-use base = qw(Section);
+package Section::File;
+use base qw(Section);
 use Carp;
 
-use constant REQ_ATTRIBUTES 	=> qw(File Users Access);
+use constant REQ_ATTRIBUTES 	=> qw(Match Users Access);
 use constant VALID_CASES	=> qw(match ignore);
+use constant VALID_ACCESSES	=> qw(read-only read-write add-only no-delete no-add);
 
 sub Parameters {
     my $self		= shift;
     my $parameter_ref	= shift;
 
-    $self->SUPER::Parameters( $parameter_ref, @{[REQ_ATTRIBUTES]} );
+    $self->SUPER::Parameters( $parameter_ref, \@{[REQ_ATTRIBUTES]} );
 }
 
 sub Match {
@@ -521,9 +522,9 @@ sub Access {
 
 sub File {
     my $self		= shift;
-    my $file		= shift;
+    my $glob		= shift;
 
-    if ( not exists $file ) {
+    if ( not defined $glob ) {
 	croak qq(Matching glob file pattern required);
     }
 
@@ -570,7 +571,7 @@ package Section::Property;
 use Carp;
 use base qw(Section);
 
-use constant REQ_PARAMETERS	=> qw(Match, Property, Value, Type);
+use constant REQ_PARAMETERS	=> qw(Match Property Value Type);
 use constant VALID_TYPES	=> qw(string number regex);
 use constant VALID_CASES	=> qw(match ignore);
 
@@ -578,7 +579,7 @@ sub Parameters {
     my $self		= shift;
     my $parameter_ref	= shift;
 
-    $self->SUPER::Parameters( $parameter_ref, @{[REQ_PARAMETERS]} );
+    $self->SUPER::Parameters( $parameter_ref, \@{[REQ_PARAMETERS]} );
 }
 
 sub Match {
@@ -588,7 +589,7 @@ sub Match {
     if ( defined $match ) {
 	$self->{MATCH} = $match;
     }
-    return $match;
+    return $self->{MATCH};
 }
 
 sub File {
@@ -650,7 +651,9 @@ sub Type {
 	if ( not exists $valid_types{$type} ) {
 	    croak qq(Invalid type of "$type" Property type passed);
 	}
+	$self->{TYPE} = $type;
     }
+    return $self->{TYPE};
 }
 #
 # END: Class: Section::Property
@@ -659,18 +662,19 @@ sub Type {
 ########################################################################
 # CLASS: Section::Revprop
 #
-package Section::Revprop
+package Section::Revprop;
 use Carp;
 use base qw(Section);
 
-use constant REQ_PARAMETERS	=> qw(Property, Value, Type);
+use constant REQ_PARAMETERS	=> qw(Property Value Type);
 use constant VALID_TYPES	=> qw(string number regex);
+use constant VALID_CASES	=> qw(match ignore);
 
 sub Parameters {
     my $self		= shift;
     my $parameter_ref	= shift;
 
-    $self->SUPER::Parameters( $parameter_ref, @{[REQ_PARAMETERS]} );
+    $self->SUPER::Parameters( $parameter_ref, \@{[REQ_PARAMETERS]} );
 }
 
 sub Case {
@@ -720,7 +724,9 @@ sub Type {
 	if ( not exists $valid_types{$type} ) {
 	    croak qq(Invalid type of "$type" Property type passed);
 	}
+	$self->{TYPE} = $type;
     }
+    return $self->{TYPE};
 }
 #
 # END: Class: Section::Revprop
@@ -734,7 +740,7 @@ use base qw(Section);
 
 use Carp;
 
-use constant REQ_PARAMETER	=> qw(Match);
+use constant REQ_PARAMETERS	=> qw(Match);
 use constant VALID_CASES	=> qw(match ignore);
 
 sub Parameters {
@@ -793,13 +799,14 @@ use constant REQ_ATTRIBUTES	=> qw(ldap);
 use constant {
     DEFAULT_NAME_ATTR	=> "sAMAccountName",
     DEFAULT_GROUP_ATTR	=> "memberOf",
-    DEFAULT_TIMEOUT	=> 5;
+    DEFAULT_TIMEOUT	=> 5,
 };
 
 BEGIN {
     eval { require Net::LDAP; };
-    our ldap_available = 1 if not $@;
+    our $ldap_available = 1 if not $@;
 }
+our $ldap_available;
 
 sub Parameters {
     my $self 		= shift;
@@ -812,7 +819,7 @@ sub Parameters {
     $self->SUPER::Parameters ( $parameter_ref, \@{[REQ_ATTRIBUTES]} );
 }
 
-sub ldap {
+sub Ldap {
     my $self		= shift;
 
     if ( not $self->Description ) {
@@ -827,7 +834,7 @@ sub Username_attr {
     my $self		= shift;
     my $username_attr	= shift;
 
-    if ( defined $ldap_attr ) {
+    if ( defined $username_attr ) {
 	$self->{USER_NAME_ATTR} = $username_attr;
     }
 
@@ -901,7 +908,7 @@ sub Ldap_Groups {
     my $self		= shift;
     my $user		= shift;
 
-    my $ldap		= $self->Ldap;
+    my $ldap_servers	= $self->Ldap;
     my $user_dn		= $self->User_dn;
     my $password	= $self->Password;
     my $search_base	= $self->Search_base;
@@ -917,7 +924,7 @@ sub Ldap_Groups {
     #
     # Create LDAP Object
     #
-    my $ldap = Net::LDAP->new( $ldap, timeout => $timeout, onerror => "die" );
+    my $ldap = Net::LDAP->new( $ldap_servers, timeout => $timeout, onerror => "die" );
     if ( not defined $ldap ) {
 	croak qq(Could not connect to LDAP servers:)
 	    . join ", ", @{ $ldap } . qq( Timeout = $timeout );
@@ -981,5 +988,5 @@ sub Ldap_Groups {
 	$group =~ s/cn=(.+?),.*/\L$1\U/i;  	#Just the "CN" value
 	push @groups, $group;
     }
-    return wantarray @groups ? \@groups;
+    return wantarray ? @groups : \@groups;
 }
