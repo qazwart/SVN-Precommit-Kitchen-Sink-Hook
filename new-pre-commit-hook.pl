@@ -39,8 +39,6 @@ my $revision;			#Subversion Revision Number (Used for testing)
 my $only_parse;			#Only parse the control file
 my $want_help;			#User needs help with options
 my $show_perldoc;		#Show the entire Perl documentation
-my $svn_user;			#Login User (if required)
-my $svn_password;		#Login Password (if required)
 
 my $error_message;		#Error Message to display
 
@@ -50,27 +48,12 @@ GetOptions (
     'filelocation=s'		=> \@control_files_in_repo,
     't=s'			=> \$transaction,
     'r=i'			=> \$revision,
-    'svn_user=s'		=> \$user,
-    'svn_password=s'		=> \$password,
     'parse'			=> \$only_parse,
     'help'			=> \$want_help,
     'documentation'		=> \$show_perldoc,
 ) or $error_message = 'Invalid options';
 
 my $repository = shift;
-
-my $credentials;
-if ( defined $svn_user and defined $svn_password ) {
-    $credentials = qq(--username="$svn_user" --password="$svn_password");
-}
-elsif ( defined $svn_user ) {
-    $credentials = qq(--username="$svn_user");
-}
-elsif ( defined $svn_password ) {
-    $credentials = qq(--password="$svn_password");
-else {
-    $credentials = "";
-}
 
 if ( not defined $repository ) {
     $error_message .= '\nNeed to pass the repository name';
@@ -110,7 +93,6 @@ my $configuration = Configuration->new;
 
 $configuration->Repository($svn_repository);
 $configuration->Svnlook($svnlook);
-$configuration->Credentials($credentials)
 
 my $rev_param = defined $revision ? "-r$revision" : "-t$transaction";
 $configuration->Rev_param($rev_param);
@@ -192,10 +174,21 @@ sub Author {
     my $author		= shift;
 
     if ( defined $author ) {
-	$self->{AUTHOR} = $author;
+	$self->Ldap_user($author);	#Preserved with spaces and case;
+	$author =~ s/\s+/_/g;		#Replace whitespace with underscores
+	$self->{AUTHOR} = lc $author;
     }
-
     return $self->{AUTHOR};
+}
+
+sub Ldap_user {
+    my $self		= shift;
+    my $ldap_user	= shift;
+
+    if ( defined $ldap_user ) {
+	$self->{LDAP_USER} = $ldap_user;
+    }
+    return $self->{LDAP_USER};
 }
 
 sub Repository {
@@ -234,16 +227,6 @@ sub Svnlook {
     return $self->{SVNLOOK};
 }
 
-sub Credentials {
-    my $self		= shift;
-    my $credentials	= shift;
-
-    if ( defined $credentials ) {
-	my $self->{CREDENTIALS} = $credentials;
-    }
-    return $self->{CREDENTIALS};
-}
-
 #
 ########################################################################
 
@@ -253,6 +236,7 @@ sub Credentials {
 # Stores Location, Type, and Contents of the Control File
 #
 package Control_file;
+use autodie;
 use Carp;
 
 use constant {
@@ -300,18 +284,16 @@ sub new {
 	my $rev_param   = $configuration->Rev_param;
 	my $svnlook     = $configuration->Svnlook;
 	my $repository  = $configuration->Repository;
-	my $credentials = $configuration->Credentials;
 	my @file_contents;
 	    eval {
-		@file_contents = qx($svnlook cat $credentials $rev_param $repository $file);
+		@file_contents = qx($svnlook cat $rev_param $repository $file);
 	    };
 	    if ($@) {
-		croak qq(Could not retreive contents of control file "$file" from repository "$repository");
+		croak qq(Couldn't retreive contents of control file "$file" from repository "$repository");
 	    }
 	    chomp @file_contents;
 	    $self->Contents(\@file_contents);
     }
-
     return $self;
 }
 
@@ -341,16 +323,14 @@ sub Type {
 
 sub Contents {
     my $self		= shift;
-    my $contents_ref	= shift;
+    my @contents	= @{ shift() };
 
-    if ( scalar $contents_ref ) {
-	if ( ref $contents_ref ne "ARRAY" ) {
-	    croak qq (Contents of control file must be a reference to an array.);
-	}
-	$self->{CONTENTS} = $contents_ref;
+    if ( @contents ) {
+	@contents = grep { not /^\s*[#;]/ } @contents;  #Remove comment lines
+	@contents = grep { not /^\s*$/ } @contents;  #Remove blank lines
+	my $self->{CONTENTS} = \@contents;
     }
-
-    my @contents = @{ $self->{CONTENTS} };
+    @contents = @{ $self->{CONTENTS} };
     return wantarray ? @contents : \@contents;
 }
 #
@@ -384,7 +364,7 @@ sub new {
     bless $self, $class;
 
     if ( not $self->isa("Section") ) {
-	croak qq(Invalid Section type "$type" passed);
+	croak qq(Invalid Section type "$type" in control file);
     }
     $self->Description($description);
     $self->Parameters($parameter_ref);
@@ -420,13 +400,17 @@ sub Parameters {
     #
     # Make sure all required parameters are here
     #
-    for my $method ( @req_methods ) {
-	$method = ucfirst lc $method;
-	if ( not $self->$method ) {
-	    croak qq(Missing required parameter "$method");
+    if ( @req_methods ) {
+	for my $method ( @req_methods ) {
+	    $method = ucfirst lc $method;
+	    if ( not $self->$method ) {
+		croak qq(Missing required parameter "$method");
+	    }
 	}
     }
+    return 1;
 }
+
 sub glob2regex {
     my $glob = shift;
 
@@ -464,13 +448,13 @@ package Section::Group;
 use base = qw(Section);
 use Carp;
 
-use constant REQUIRED_METHODS	=> qw(Users);
+use constant REQ_ATTRIBUTES	=> qw(Users);
 
 sub Parameters {
     my $self		= shift;
     my $parameter_ref	= shift;
 
-    $self->SUPER::Parameters( $parameter_ref, @{[REQUIRED_METHODS]} );
+    $self->SUPER::Parameters( $parameter_ref, @{[REQ_ATTRIBUTES]} );
 }
 
 sub Users {
@@ -497,14 +481,14 @@ package Section::File
 use base = qw(Section);
 use Carp;
 
-use constant REQUIRED_METHODS 	=> qw(File Users Access);
+use constant REQ_ATTRIBUTES 	=> qw(File Users Access);
 use constant VALID_CASES	=> qw(match ignore);
 
 sub Parameters {
     my $self		= shift;
     my $parameter_ref	= shift;
 
-    $self->SUPER::Parameters( $parameter_ref, @{[REQUIRED_METHODS]} );
+    $self->SUPER::Parameters( $parameter_ref, @{[REQ_ATTRIBUTES]} );
 }
 
 sub Match {
@@ -765,7 +749,7 @@ sub File {
     my $glob		= shift;
 
     my $match = Section::glob2regex( $glob );
-    my $self->Match( $match );
+    $self->Match( $match );
 }
 
 sub Match {
@@ -801,6 +785,16 @@ sub Case {
 # Class Section::Ldap
 #
 package Section::Ldap;
+use Carp;
+use base qw(Section);
+
+use constant REQ_ATTRIBUTES	=> qw(ldap);
+
+use constant {
+    DEFAULT_NAME_ATTR	=> "sAMAccountName",
+    DEFAULT_GROUP_ATTR	=> "memberOf",
+    DEFAULT_TIMEOUT	=> 5;
+};
 
 BEGIN {
     eval { require Net::LDAP; };
@@ -808,4 +802,184 @@ BEGIN {
 }
 
 sub Parameters {
+    my $self 		= shift;
+    my $parameter_ref	= shift;
 
+    if ( not $ldap_available ) {
+	croak qq(You need to install the Perl module "Net::LDAP" to use LDAP groups);
+    }
+
+    $self->SUPER::Parameters ( $parameter_ref, \@{[REQ_ATTRIBUTES]} );
+}
+
+sub ldap {
+    my $self		= shift;
+
+    if ( not $self->Description ) {
+	croak qq(Missing description which contains the LDAP server list);
+    }
+
+    my @ldaps = split /[\s,]+/, $self->Desciption;	
+    return wantarray ? @ldaps : \@ldaps;
+}
+
+sub Username_attr {
+    my $self		= shift;
+    my $username_attr	= shift;
+
+    if ( defined $ldap_attr ) {
+	$self->{USER_NAME_ATTR} = $username_attr;
+    }
+
+    if ( not exists $self->{USER_NAME_ATTR} ) {
+	$self->{USER_NAME_ATTR} = DEFAULT_NAME_ATTR;
+    }
+    return $self->{LDAP_ACCT_ATTR};
+}
+
+sub Group_attr {
+    my $self		= shift;
+    my $group_attr	= shift;
+
+    if ( defined $group_attr ) {
+	$self->{GROUP_ATTR} = $group_attr;
+    }
+    if ( not exists $self->{GROUP_ATTR} ) {
+	$self->{GROUP_ATTR} = DEFAULT_GROUP_ATTR;
+    }
+    return $self->{GROUP_ATTR};
+}
+
+sub User_dn {
+    my $self		= shift;
+    my $user_dn		= shift;
+
+    if ( defined $user_dn ) {
+	$self->{USER_DN} = $user_dn;
+    }
+    return $self->{USER_DN};
+}
+
+sub Password {
+    my $self		= shift;
+    my $password	= shift;
+
+    if ( defined $password ) {
+	$self->{PASSWORD} = $password;
+    }
+    return $self->{PASSWORD};
+}
+
+sub Search_base {
+    my $self		= shift;
+    my $search_base	= shift;
+
+    if ( defined $search_base ) {
+	$self->{SEARCH_BASE} = $search_base;
+    }
+    return $self->{SEARCH_BASE};
+}
+
+sub Timeout {
+    my $self		= shift;
+    my $timeout		= shift;
+
+    if ( defined $timeout ) {
+	if ( $timeout =~ /^\d+$/ ) {
+	    croak qq(Timeout value for ldap server must be an integer);
+	}
+	$self->{TIMEOUT} = $timeout;
+    }
+
+    if ( not exists $self->{TIMEOUT} ) {
+	$self->{TIMEOUT} = DEFAULT_TIMEOUT;
+    }
+    return $self->{TIMEOUT};
+}
+
+sub Ldap_Groups {
+    my $self		= shift;
+    my $user		= shift;
+
+    my $ldap		= $self->Ldap;
+    my $user_dn		= $self->User_dn;
+    my $password	= $self->Password;
+    my $search_base	= $self->Search_base;
+    my $timeout		= $self->Timeout;
+
+    my $username_attr	= $self->Username_attr;
+    my $group_attr	= $self->Group_attr;
+
+    if ( not defined $user ) {
+	croak qq(Need to pass in a user name);
+    }
+
+    #
+    # Create LDAP Object
+    #
+    my $ldap = Net::LDAP->new( $ldap, timeout => $timeout, onerror => "die" );
+    if ( not defined $ldap ) {
+	croak qq(Could not connect to LDAP servers:)
+	    . join ", ", @{ $ldap } . qq( Timeout = $timeout );
+    }
+    #
+    # Try a bind
+    #
+    eval {
+	if ( $user_dn and $password ) {
+	    $ldap->bind( $user_dn, password => $password );
+	}
+	elsif ( $user_dn and not $password ) {
+	    $ldap->bind( $user_dn );
+	}
+	else {
+	    $ldap->bind;
+	}
+    };
+    if ( $@ ) {
+	no warnings qw(uninitialized);
+	croak qq(Could not "bind" to LDAP server.) 
+	    . qq( User DN: "$user_dn" Password: "$password");
+    }
+
+    #
+    # Search
+    #
+
+    my $search;
+    eval {
+	if ( $search_base ) {
+	    $search = $ldap->search(
+		basename => $search_base,
+		filter => "($username_attr=$user)",
+	    );
+	}
+	else {
+	    $search = $ldap->search(
+		filter => "($username_attr=$user)",
+	    );
+	}
+    };
+    if ( $@ ) {
+	croak qq(Search of LDAP tree failed);
+    }
+
+    #
+    # Get the Entry
+    #
+    my $entry = $search->pop_entry;	#Should only return a single entry
+    if ( undef $entry ) {
+	croak qq(Could not locate "$user" with attribute "$username_attr".);
+    }
+
+    #
+    # Get the attribute of that entry
+    #
+
+    my @groups;
+    for my $group ( $entry->get_value( $group_attr ) ) {
+	$group =~ s/cn=(.+?),.*/\L$1\U/i;  	#Just the "CN" value
+	push @groups, $group;
+    }
+    return wantarray @groups ? \@groups;
+}
