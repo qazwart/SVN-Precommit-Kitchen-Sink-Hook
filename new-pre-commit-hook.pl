@@ -29,100 +29,48 @@ use constant {		#Revision file Type (package Configuration)
 $| = 1;
 
 ########################################################################
-# GET OPTION
+# GET PARAMETERS
 #
-my $svnlook			= SVNLOOK_DEFAULT;
-my $control_file_on_server	= SVN_REPO_DEFAULT;
-
-my @control_files_in_repo;	#Control File location inside Repository
-my $transaction;		#Transaction ID (Used by hook)
-my $revision;			#Subversion Revision Number (Used for testing)
-my $parse_only;			#Only parse the control file
-my $want_help;			#User needs help with options
-my $show_perldoc;		#Show the entire Perl documentation
-my $config_error;
+my %parameters;
+$parameters{svnlook}		= SVNLOOK_DEFAULT;
+$parameters{file}		= SVN_REPO_DEFAULT;
 
 GetOptions (
-    'svnlook=s'			=> \$svnlook,
-    'file=s'			=> \$control_file_on_server,
-    'filelocation=s'		=> \@control_files_in_repo,
-    't=s'			=> \$transaction,
-    'r=i'			=> \$revision,
-    'parse'			=> \$parse_only,
-    'help'			=> \$want_help,
-    'documentation'		=> \$show_perldoc,
-) or $config_error = 'Invalid options';
-
-my $svn_repository = shift;
-
-if ( not defined $svn_repository ) {
-    $config_error .= "\nNeed to pass the repository name";
-}
-
-if ( not ( defined $revision or defined $transaction ) ) {
-    $config_error .= "\nNeed to specify either a transaction or Subversion revision";
-}
-
-if ( defined $revision and defined $transaction ) {
-    $config_error .= "\nOnly define either revision or transaction";
-}
-
-if ( not ( defined $control_file_on_server or @control_files_in_repo ) ) {
-    $config_error .= "\nNeed to specify a control file";
-}
-
-if ( $show_perldoc ) {
-    pod2usage ( -exitstatus => 0, -verbose => 2 );
-}
-
-if ( $want_help ) {
-    pod2usage ( -verbose => 0, -exitstatus => 0 );
-}
-
-if ( defined $config_error ) {
-    pod2usage ( -message => $config_error, -verbose => 0, -exitstatus => 2 );
-}
-
-#
-########################################################################
-
-########################################################################
-# SETUP CONFIGURATION INFORMATION
-#
-
+    \%parameters,
+    'svnlook=s',		#Location of 'svnlook' command
+    'file=s',			#Location of control file on server
+    'filelocations=s',		#Location of control files in repository
+    't=s',			#Repository Transaction 
+    'r=i',			#Repository Revision Number
+    'parse',			#Only parse control file for errors
+    'help',			#Display command line help
+    'documentation',		#Display the entire Documentation
+) or pod2usage ( -message => "Invalid parameters passed" );
+$parameters{svn_repo} = shift;
 my $configuration = Configuration->new;
+my @configuration_errors = check_options( $configuration, \%parameters );
 
-$configuration->Repository($svn_repository);
-$configuration->Svnlook($svnlook);
-
-my $rev_param = defined $revision ? "-r$revision" : "-t$transaction";
-$configuration->Rev_param($rev_param);
-
-my $author;
-eval {
-    $author = qx( $svnlook author $rev_param  "$svn_repository" );
-};
-chomp $author;
-
-if ( not $parse_only and not defined $author ) {
-    die qq(Author of change cannot be found\n);
+if ( @configuration_errors ) {
+    print "ERRORS: Bad configuraiton:\n";
+    for my $error ( @configuration_errors ) {
+	print "* $error\n";
+    }
+    exit 2;
 }
-$configuration->Author($author);
-
 #
-# Save Control File on server
+#
+########################################################################
+
+########################################################################
+# Create Control File List
 #
 
 my @control_file_list;
-if ( defined $control_file_on_server ) {
-    push @control_file_list, Control_file->new( FILE_ON_SERVER, $control_file_on_server );
+if ( defined $parameters{file} ) {
+    push @control_file_list, Control_file->new( FILE_ON_SERVER, $parameters{file} );
 }
 
-#
-# Save Control Files stored in Repository;
-#
-
-for my $control_file ( @control_files_in_repo ) {
+for my $control_file ( @{ $parameters{filelocations} } ) {
     push @control_file_list,
 	Control_file->new(FILE_IN_REPO, $control_file, $configuration);
 }
@@ -130,7 +78,7 @@ for my $control_file ( @control_files_in_repo ) {
 ########################################################################
 
 ########################################################################
-# BUILD CONTROL FILE SECTIONS
+# PARSE CONTROL FILES
 #
 
 my $sections = Section_group->new;
@@ -143,11 +91,86 @@ if ( @parse_errors ) {
     }
     exit 2;
 }
+if ( exists $parameters{parse} ) {
+    print qq(Control files are valid\n);
+    print "Resulting structure:\n";
+    $Data::Dumper::Indent = 1;
+    print Dumper ( $sections ) . "\n";
+    exit 0;
+}
+
 say Dumper $sections;
 say "-" x 72;
 say Dumper $configuration;
 #
 # END
+########################################################################
+
+########################################################################
+# SUBROUTINE check_options
+#
+sub check_options {
+    my $configuration	= shift;	#Configuration Object
+    my %parameters 	= %{ shift() };
+
+    #
+    # Does the user want help?
+    #
+    if ( exists $parameters{documentation} ) {
+	pod2usage ( -exitstatus => 0, -verbose => 2 );
+    }
+
+    if ( exists $parameters{help} ) {
+	pod2usage ( -verbose => 0, -exitstatus => 0 );
+    }
+
+    #
+    # Check and set the configurations
+    #
+    my @config_errors;
+
+    # Location of svnlook command
+    eval { $configuration->Svnlook($parameters{svnlook}); };
+    if ( $@ ) {
+	my $error = qq(Location "$parameters{svnlook}" )
+	    . qq(is not a valid "svnlook" command);
+	push @config_errors, $error;
+    }
+
+    if ( not ( exists $parameters{file}
+		or exists $parameters{filelocations} ) ) {
+	push @config_errors, "Need to specify a control file";
+    }
+    
+    # Repository Location
+    if ( not defined $parameters{svn_repo} ) {
+	push @config_errors, "Need to pass the repository name";
+    }
+    $configuration->Repository($parameters{svn_repo});
+
+    # Transaction or Revision Number
+    if ( not ( exists $parameters{r} or exists $parameters{t} ) ) {
+	push @config_errors, "Must specify a repo transaction or revision";
+    }
+
+    if ( exists $parameters{r} and exists $parameters{t} ) {
+	push @config_errors, qq(Cannot specify both "-t" and "-r" parameters");
+    }
+
+    if ( exists $parameters{r} ) {
+	$configuration->Rev_param( "-r $parameters{r}" );
+    }
+    else {
+	$configuration->Rev_param( "-t $parameters{t}" );
+    }
+
+    eval { $configuration->Set_author if not $parameters{parse}; };
+    if ( $@ ) {
+	push @config_errors, qq(Cannot set author: $@);
+    }
+    return wantarray ? @config_errors : \@config_errors;
+}
+#
 ########################################################################
 
 ########################################################################
@@ -246,6 +269,36 @@ sub Ldap_user {
 	$self->{LDAP_USER} = $ldap_user;
     }
     return $self->{LDAP_USER};
+}
+
+sub Set_author {
+    my $self		= shift;
+
+    if ( not $self->Svnlook ) {
+	croak qq(Need to set where "svnlook" command is located first);
+    }
+
+    if ( not $self->Rev_param ) {
+	croak qq(Need to set the revision or transaction parameter first);
+    }
+    if ( not $self->Repository ) {
+	croak qq(Need to set the repository location first);
+    }
+
+    my $svnlook = $self->Svnlook;
+    my $rev	= $self->Rev_param;
+    my $repo	= $self->Repository;
+    my $author;
+    my $command = qq("$svnlook" author $rev "$repo");
+    eval { $author = qx($command) };
+    if ( $@ ) {
+	croak qq(Failed to execute command "$command");
+    }
+    chomp $author;
+    if ( not $author ) {
+	croak qq(Cannot locate author of revision "$rev" in repo "$repo");
+    }
+    return $self->Author($author);
 }
 
 sub Repository {
