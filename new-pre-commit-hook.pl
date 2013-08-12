@@ -40,8 +40,7 @@ my $revision;			#Subversion Revision Number (Used for testing)
 my $parse_only;			#Only parse the control file
 my $want_help;			#User needs help with options
 my $show_perldoc;		#Show the entire Perl documentation
-
-my $error_message;		#Error Message to display
+my $config_error;
 
 GetOptions (
     'svnlook=s'			=> \$svnlook,
@@ -52,24 +51,24 @@ GetOptions (
     'parse'			=> \$parse_only,
     'help'			=> \$want_help,
     'documentation'		=> \$show_perldoc,
-) or $error_message = 'Invalid options';
+) or $config_error = 'Invalid options';
 
 my $svn_repository = shift;
 
 if ( not defined $svn_repository ) {
-    $error_message .= "\nNeed to pass the repository name";
+    $config_error .= "\nNeed to pass the repository name";
 }
 
 if ( not ( defined $revision or defined $transaction ) ) {
-    $error_message .= "\nNeed to specify either a transaction or Subversion revision";
+    $config_error .= "\nNeed to specify either a transaction or Subversion revision";
 }
 
 if ( defined $revision and defined $transaction ) {
-    $error_message .= "\nOnly define either revision or transaction";
+    $config_error .= "\nOnly define either revision or transaction";
 }
 
 if ( not ( defined $control_file_on_server or @control_files_in_repo ) ) {
-    $error_message .= "\nNeed to specify a control file";
+    $config_error .= "\nNeed to specify a control file";
 }
 
 if ( $show_perldoc ) {
@@ -80,8 +79,8 @@ if ( $want_help ) {
     pod2usage ( -verbose => 0, -exitstatus => 0 );
 }
 
-if ( defined $error_message ) {
-    pod2usage ( -message => $error_message, -verbose => 0, -exitstatus => 2 );
+if ( defined $config_error ) {
+    pod2usage ( -message => $config_error, -verbose => 0, -exitstatus => 2 );
 }
 
 #
@@ -137,6 +136,13 @@ for my $control_file ( @control_files_in_repo ) {
 my $sections = Section_group->new;
 my @parse_errors =  parse_control_files( $sections, \@control_file_list );
 
+if ( @parse_errors ) {
+    for my $parse_error ( @parse_errors ) {
+	say $parse_error->Get_error;
+	say "-" x 72;
+    }
+    exit 2;
+}
 say Dumper $sections;
 say "-" x 72;
 say Dumper $configuration;
@@ -151,6 +157,7 @@ sub parse_control_files {
     my $sections		= shift;
     my $control_file_list_ref	= shift;
 
+    my @parse_errors;
     for my $control_file ( @{ $control_file_list_ref } ) {
 	my $section;
 	my $section_error = 0;
@@ -160,7 +167,7 @@ sub parse_control_files {
 	    next unless $line;	#Ignore blank lines
 	    if ( $line =~ SECTION_HEADER ) {
 		my $section_type = $1;
-		my $description = $2;
+		my $description  = $2;
 		eval { $section = Section->new( $section_type, $description ); };
 		if ( $@ ) {
 		    $section_error = 1;
@@ -178,12 +185,13 @@ sub parse_control_files {
 		if ( $section_error ) {
 		    next;
 		}
-		my $parameter = $1;
+		my $parameter	= $1;
 		my $value	= $2;
 		eval { $section->Parameter( $parameter, $value ); };
 		if ($@) {
 		    my $error = qq(Invalid Parameter "$parameter");
 		    push @parse_errors, Parse_error->new($error, $control_file, $line_number);
+		    next;
 		}
 	    }
 	    else { #Invalid Line
@@ -192,7 +200,7 @@ sub parse_control_files {
 	    }
 	}
     }
-    return @parse_errors
+    return wantarray ? @parse_errors : \@parse_errors
 }
 
 
@@ -485,9 +493,11 @@ sub Parameter {
     }
 
     if ( defined $value ) {
-	$self->$method($value);
+	return $self->$method($value);
     }
-    return $self->$method;
+    else {
+	return $self->$method;
+    }
 }
 
 sub Verify_parameters {
@@ -495,7 +505,7 @@ sub Verify_parameters {
     my $req_method_ref	= shift;
 
     my @req_methods = $req_method_ref;
-    say Dumper \@req_methods;
+    #say Dumper \@req_methods;
 
 #
 # Call the various methods
@@ -1144,7 +1154,7 @@ sub Get_error {
     my $control_file	= $self->Control_file;
     my $file_name 	= $control_file->Location;
     my $location	= $control_file->Type;
-    my @file_contents	= $control_file->Contents;
+    my @file_contents	= $control_file->Content;
 
     #
     # You need to push the line that has the error
@@ -1173,19 +1183,23 @@ sub Get_error {
     $line_number = $self->Line_number + 1;
     while ( $line_number <= $#file_contents
 	    and $file_contents[$line_number] !~ /^\s*\[/ ) {
-	$line_number++;
 	my $line = $file_contents[$line_number];
-	push @section_lines, "    $line";
+	$line_number++;
+	next if not $line;
+	push @section_lines, "   $line";
 
     }
     #
     # Now generate the error message
     #
 
-    my $description =  $self->Description . "\n";
-    $description .= "    Line# " . $self->Line_number . "\n";
-    $description .= "    ";
-    $description .= join "    \n", @section_lines;
+    my $description =  "ERROR: In parsing Control File";
+    $description .= qq( "$file_name" ($location));
+    $description .= " Line# " . $self->Line_number . "\n";
+    $description .= "    " . $self->Description . "\n";
+    for my $line ( @section_lines ) {
+	$description .= "    $line\n";
+    }
 
     return $description;
 }
