@@ -4,6 +4,7 @@
 
 use strict;
 use warnings;
+use feature qw(say);
 
 use Data::Dumper;
 use Getopt::Long;
@@ -25,18 +26,18 @@ use constant {		#Revision file Type (package Configuration)
     TRANSACTION 	=> "T",
     REVISION		=> "R",
 };
+$| = 1;
 
 ########################################################################
 # GET OPTION
 #
-
 my $svnlook			= SVNLOOK_DEFAULT;
 my $control_file_on_server	= SVN_REPO_DEFAULT;
 
 my @control_files_in_repo;	#Control File location inside Repository
 my $transaction;		#Transaction ID (Used by hook)
 my $revision;			#Subversion Revision Number (Used for testing)
-my $only_parse;			#Only parse the control file
+my $parse_only;			#Only parse the control file
 my $want_help;			#User needs help with options
 my $show_perldoc;		#Show the entire Perl documentation
 
@@ -48,29 +49,30 @@ GetOptions (
     'filelocation=s'		=> \@control_files_in_repo,
     't=s'			=> \$transaction,
     'r=i'			=> \$revision,
-    'parse'			=> \$only_parse,
+    'parse'			=> \$parse_only,
     'help'			=> \$want_help,
     'documentation'		=> \$show_perldoc,
 ) or $error_message = 'Invalid options';
 
-my $repository = shift;
+my $svn_repository = shift;
 
-if ( not defined $repository ) {
-    $error_message .= '\nNeed to pass the repository name';
+if ( not defined $svn_repository ) {
+    $error_message .= "\nNeed to pass the repository name";
 }
 
 if ( not ( defined $revision or defined $transaction ) ) {
-    $error_message .= '\nNeed to specify either a transaction or Subversion revision';
+    $error_message .= "\nNeed to specify either a transaction or Subversion revision";
 }
 
 if ( defined $revision and defined $transaction ) {
-    $error_message .= '\nOnly define either revision or transaction';
-
-if ( not ( defined $control_file or scalar @repo_control_file ) ) {
-    $error_message .= '\nNeed to specify a control file';
+    $error_message .= "\nOnly define either revision or transaction";
 }
 
-if ( $show_perdoc ) {
+if ( not ( defined $control_file_on_server or @control_files_in_repo ) ) {
+    $error_message .= "\nNeed to specify a control file";
+}
+
+if ( $show_perldoc ) {
     pod2usage ( -exitstatus => 0, -verbose => 2 );
 }
 
@@ -79,7 +81,7 @@ if ( $want_help ) {
 }
 
 if ( defined $error_message ) {
-    pod2useage ( -message => $error_mssage, -verbose => 2, -exitstatus => 2 );
+    pod2usage ( -message => $error_message, -verbose => 0, -exitstatus => 2 );
 }
 
 #
@@ -132,21 +134,68 @@ for my $control_file ( @control_files_in_repo ) {
 # BUILD CONTROL FILE SECTIONS
 #
 
-my $section;
-while my $line ( @control_file ) {
-    next if /\s*#/;	#Ignore comments
-    next if /^\s*$/;	#Ignore blanks
-    if    ( $line =~ SECTION_HEADER ) {
-	my $section_type = $1;
-	my $description  = $2;
-	$section = $configuration->Section($section_type, $decription);
+my $sections = Section_group->new;
+my @parse_errors =  parse_control_files( $sections, \@control_file_list );
+
+say Dumper $sections;
+say "-" x 72;
+say Dumper $configuration;
+#
+# END
+########################################################################
+
+########################################################################
+# SUBROUTINE parse_control_files
+#
+sub parse_control_files {
+    my $sections		= shift;
+    my $control_file_list_ref	= shift;
+
+    for my $control_file ( @{ $control_file_list_ref } ) {
+	my $section;
+	my $section_error = 0;
+	my @control_file_lines = $control_file->Content;
+	for my $line_number ( (0..$#control_file_lines) ) {
+	    my $line = $control_file_lines[$line_number];
+	    next unless $line;	#Ignore blank lines
+	    if ( $line =~ SECTION_HEADER ) {
+		my $section_type = $1;
+		my $description = $2;
+		eval { $section = Section->new( $section_type, $description ); };
+		if ( $@ ) {
+		    $section_error = 1;
+		    my $error = qq(Invalid Section Type "$section_type");
+		    push @parse_errors, Parse_error->new($error, $control_file, $line_number);
+		}
+		else {
+		    $section_error = 0;
+		    $sections->Add($section);
+		    $section->Control_file_line($line_number);
+		    $section->Control_file($control_file);
+		}
+	    }
+	    elsif ( $line =~ PARAMETER_LINE ) {
+		if ( $section_error ) {
+		    next;
+		}
+		my $parameter = $1;
+		my $value	= $2;
+		eval { $section->Parameter( $parameter, $value ); };
+		if ($@) {
+		    my $error = qq(Invalid Parameter "$parameter");
+		    push @parse_errors, Parse_error->new($error, $control_file, $line_number);
+		}
+	    }
+	    else { #Invalid Line
+		my $error = qq(Invalid Line in "$line");
+		push @parse_errors, Parse_error->new($error, $control_file, $line_number);
+	    }
+	}
     }
-    elsif ( $line =~ PARAMETER_LINE ) {
-	my $parameter = $1;
-	my $value     = $2;
-	$section->Parameter($parameter, $value)
-    }
+    return @parse_errors
 }
+
+
 #
 ########################################################################
 
@@ -283,24 +332,24 @@ sub new {
 	if ( $@ ) {
 	    croak qq(Invalid Control file "$location" on server.);
 	}
-	say Dumper $control_file_fh;
 	my @file_contents = <$control_file_fh>;
 	close $control_file_fh;
 	chomp @file_contents;
-	$self->Contents(\@file_contents);
+	$self->Content(\@file_contents);
+}
+else {
+    my $rev_param   = $configuration->Rev_param;
+    my $svnlook     = $configuration->Svnlook;
+    my $repository  = $configuration->Repository;
+    my @file_contents;
+    eval {
+	@file_contents = qx($svnlook cat $rev_param $repository $location);
+    };
+    if ($@) {
+	croak qq(Couldn't retreive contents of control file)
+	. qq("$location" from repository "$repository");
     }
-    else {
-	my $rev_param   = $configuration->Rev_param;
-	my $svnlook     = $configuration->Svnlook;
-	my $repository  = $configuration->Repository;
-	my @file_contents;
-	    eval {
-		@file_contents = qx($svnlook cat $rev_param $repository $location);
-	    };
-	    if ($@) {
-		croak qq(Couldn't retreive contents of control file "$location" from repository "$repository");
-	    }
-	    $self->Contents(\@file_contents);
+    $self->Content(\@file_contents);
     }
     return $self;
 }
@@ -329,17 +378,21 @@ sub Type {
     return $self->{TYPE};
 }
 
-sub Contents {
+sub Content {
     my $self		= shift;
-    my @contents	= @{ shift() };
+    my $contents_ref	= shift;
 
-    if ( @contents ) {
-	@contents = grep { not /^\s*[#;]/ } @contents;  #Remove comment lines
-	@contents = grep { not /^\s*$/ } @contents;  #Remove blank lines
+    if ( defined $contents_ref ) {
+	my @contents;
+	for my $line ( @{$contents_ref} ) {
+	    $line =~ s/^\s*$//;		#Make blank lines empty
+	    $line =~ s/^\s*[#;].*//;	#Make comment lines empty
+	    push @contents, $line;
+	}
 	$self->{CONTENTS} = \@contents;
-    }
-    @contents = @{ $self->{CONTENTS} };
-    return wantarray ? @contents : \@contents;
+}
+my @contents = @{ $self->{CONTENTS} };
+return wantarray ? @contents : \@contents;
 }
 #
 ########################################################################
@@ -355,11 +408,15 @@ package Section;
 use Data::Dumper;
 use Carp;
 
+use constant {
+    FILE_IN_REPO	=> "R",
+    FILE_ON_SERVER	=> "F",
+};
+
 sub new {
     my $class		= shift;
     my $type		= shift;
     my $description	= shift;
-    my $parameter_ref	= shift;
 
     if ( not defined $type or not defined $description ) {
 	croak qq(You must pass in the Section type and Description);
@@ -375,8 +432,8 @@ sub new {
     if ( not $self->isa("Section") ) {
 	croak qq(Invalid Section type "$type" in control file);
     }
+
     $self->Description($description);
-    $self->Parameters($parameter_ref);
     return $self;
 }
 
@@ -390,34 +447,66 @@ sub Description {
     return $self->{DESCRIPTION};
 }
 
-
-sub Parameters {
+sub Control_file {
     my $self		= shift;
-    my %parameters	= %{ shift() };
-    my @req_methods	= @{ shift() };
+    my $control_file 	= shift;
 
-    #
-    # Call the various methods
-    #
-    my %methods;
-    for my $parameter ( keys %parameters ) {
-	my $method = ucfirst lc $parameter;
-	if ( not $self->can( "$method" ) ) {
-	    croak qq(Invalid parameter "$method" passed);
+    if ( defined $control_file ) {
+	if ( ref $control_file ne "Control_file" ) {
+	    croak qq(Control file must be of a type "Control_file");
 	}
-	$self->$method( $parameters{$parameter} );
+	$self->{CONTROL_FILE_NAME} = $control_file;
+    }
+    return $self->{CONTROL_FILE_NAME};
+}
+
+sub Control_file_line {
+    my $self		= shift;
+    my $line_number	= shift;
+
+    if ( defined $line_number ) {
+	$self->{LINE_NUMBER} = $line_number;
+    }
+    return $self->{LINE_NUMBER};
+}
+
+sub Parameter {
+    my $self		= shift;
+    my $parameter	= shift;
+    my $value		= shift;
+
+    if ( not defined $parameter ) {
+	croak qq(Missing parameter "parameter");
+    }
+    my $method = ucfirst lc $parameter;
+
+    if ( not $self->can($method) ) {
+	croak qq(Invalid parameter "$parameter" passed);
     }
 
-    #
-    # Make sure all required parameters are here
-    #
-    for my $method ( @req_methods ) {
-	$method = ucfirst lc $method;
-	if ( not $self->$method ) {
-	    croak qq(Missing required parameter "$method");
-	}
+    if ( defined $value ) {
+	$self->$method($value);
     }
-    return 1;
+    return $self->$method;
+}
+
+sub Verify_parameters {
+    my $self		= shift;
+    my $req_method_ref	= shift;
+
+    my @req_methods = $req_method_ref;
+    say Dumper \@req_methods;
+
+#
+# Call the various methods
+#
+for my $method ( @req_methods ) {
+    $method = ucfirst lc $method;
+    if ( not $self->$method ) {
+	croak qq(Missing required parameter "$method");
+    }
+}
+return 1;
 }
 
 sub glob2regex {
@@ -457,14 +546,7 @@ package Section::Group;
 use base qw(Section);
 use Carp;
 
-use constant REQ_ATTRIBUTES	=> qw(Users);
-
-sub Parameters {
-    my $self		= shift;
-    my $parameter_ref	= shift;
-
-    $self->SUPER::Parameters( $parameter_ref, \@{[REQ_ATTRIBUTES]} );
-}
+use constant REQ_PARAMETERS	=> qw(Users);
 
 sub Users {
     my $self		= shift;
@@ -473,10 +555,18 @@ sub Users {
     if ( defined $users ) {
 	my @users = split /[\s,]+/, $users;
 	$self->{USERS} = \@users;
-    }
+}
 
-    my @users = @{ $self->{USERS} };
-    return wantarray ? @users : \@users;
+my @users = @{ $self->{USERS} };
+return wantarray ? @users : \@users;
+}
+#
+
+sub Verify_parameters {
+    my $self =		shift;
+    my $required =	\@{ +REQ_PARAMETERS };
+
+return $self->SUPER::Verify_parameters($required);
 }
 #
 # END: CLASS: Section::Group
@@ -489,16 +579,9 @@ package Section::File;
 use base qw(Section);
 use Carp;
 
-use constant REQ_ATTRIBUTES 	=> qw(Match Users Access);
+use constant REQ_PARAMETERS 	=> qw(Match Users Access);
 use constant VALID_CASES	=> qw(match ignore);
 use constant VALID_ACCESSES	=> qw(read-only read-write add-only no-delete no-add);
-
-sub Parameters {
-    my $self		= shift;
-    my $parameter_ref	= shift;
-
-    $self->SUPER::Parameters( $parameter_ref, \@{[REQ_ATTRIBUTES]} );
-}
 
 sub Match {
     my $self		= shift;
@@ -563,10 +646,17 @@ sub Users {
     if ( defined $users ) {
 	my @users = split /[\s,]+/, $users;
 	$self->{USERS} = \@users;
-    }
+}
 
-    my @users = @{ $self->{USERS} };
-    return wantarray ? @users : \@users;
+my @users = @{ $self->{USERS} };
+return wantarray ? @users : \@users;
+}
+
+sub Verify_parameters {
+    my $self =		shift;
+    my $required =	\@{ +REQ_PARAMETERS };
+
+return $self->SUPER::Verify_parameters($required);
 }
 #
 # END: CLASS Section::Group
@@ -582,13 +672,6 @@ use base qw(Section);
 use constant REQ_PARAMETERS	=> qw(Match Property Value Type);
 use constant VALID_TYPES	=> qw(string number regex);
 use constant VALID_CASES	=> qw(match ignore);
-
-sub Parameters {
-    my $self		= shift;
-    my $parameter_ref	= shift;
-
-    $self->SUPER::Parameters( $parameter_ref, \@{[REQ_PARAMETERS]} );
-}
 
 sub Match {
     my $self		= shift;
@@ -663,6 +746,13 @@ sub Type {
     }
     return $self->{TYPE};
 }
+
+sub Verify_parameters {
+    my $self =		shift;
+    my $required =	\@{ +REQ_PARAMETERS };
+
+return $self->SUPER::Verify_parameters($required);
+}
 #
 # END: Class: Section::Property
 ########################################################################
@@ -677,13 +767,6 @@ use base qw(Section);
 use constant REQ_PARAMETERS	=> qw(Property Value Type);
 use constant VALID_TYPES	=> qw(string number regex);
 use constant VALID_CASES	=> qw(match ignore);
-
-sub Parameters {
-    my $self		= shift;
-    my $parameter_ref	= shift;
-
-    $self->SUPER::Parameters( $parameter_ref, \@{[REQ_PARAMETERS]} );
-}
 
 sub Case {
     my $self		= shift;
@@ -736,6 +819,13 @@ sub Type {
     }
     return $self->{TYPE};
 }
+
+sub Verify_parameters {
+    my $self =		shift;
+    my $required =	\@{ +REQ_PARAMETERS };
+
+return $self->SUPER::Verify_parameters($required);
+}
 #
 # END: Class: Section::Revprop
 ########################################################################
@@ -750,13 +840,6 @@ use Carp;
 
 use constant REQ_PARAMETERS	=> qw(Match);
 use constant VALID_CASES	=> qw(match ignore);
-
-sub Parameters {
-    my $self		= shift;
-    my $parameter_ref	= shift;
-
-    $self->SUPER::Parameters( $parameter_ref, \@{[REQ_PARAMETERS]} );
-}
 
 sub File {
     my $self		= shift;
@@ -791,6 +874,13 @@ sub Case {
     }
     return $self->{CASE};
 }
+
+sub Verify_parameters {
+    my $self =		shift;
+    my $required =	\@{ +REQ_PARAMETERS };
+
+return $self->SUPER::Verify_parameters($required);
+}
 #
 # END: Class Section::Ban
 ########################################################################
@@ -802,7 +892,7 @@ package Section::Ldap;
 use Carp;
 use base qw(Section);
 
-use constant REQ_ATTRIBUTES	=> qw(ldap);
+use constant REQ_PARAMETERS	=> qw(ldap);
 
 use constant {
     DEFAULT_NAME_ATTR	=> "sAMAccountName",
@@ -816,17 +906,6 @@ BEGIN {
 }
 our $ldap_available;
 
-sub Parameters {
-    my $self 		= shift;
-    my $parameter_ref	= shift;
-
-    if ( not $ldap_available ) {
-	croak qq(You need to install the Perl module "Net::LDAP" to use LDAP groups);
-    }
-
-    $self->SUPER::Parameters ( $parameter_ref, \@{[REQ_ATTRIBUTES]} );
-}
-
 sub Ldap {
     my $self		= shift;
 
@@ -834,7 +913,7 @@ sub Ldap {
 	croak qq(Missing description which contains the LDAP server list);
     }
 
-    my @ldaps = split /[\s,]+/, $self->Desciption;	
+    my @ldaps = split /[\s,]+/, $self->Description;	
     return wantarray ? @ldaps : \@ldaps;
 }
 
@@ -935,7 +1014,7 @@ sub Ldap_Groups {
     my $ldap = Net::LDAP->new( $ldap_servers, timeout => $timeout, onerror => "die" );
     if ( not defined $ldap ) {
 	croak qq(Could not connect to LDAP servers:)
-	    . join ", ", @{ $ldap } . qq( Timeout = $timeout );
+	. join ", ", @{ $ldap } . qq( Timeout = $timeout );
     }
     #
     # Try a bind
@@ -954,7 +1033,7 @@ sub Ldap_Groups {
     if ( $@ ) {
 	no warnings qw(uninitialized);
 	croak qq(Could not "bind" to LDAP server.) 
-	    . qq( User DN: "$user_dn" Password: "$password");
+	. qq( User DN: "$user_dn" Password: "$password");
     }
 
     #
@@ -997,4 +1076,223 @@ sub Ldap_Groups {
 	push @groups, $group;
     }
     return wantarray ? @groups : \@groups;
+}
+#
+# END: Class: Section::Ldap
+########################################################################
+
+########################################################################
+# Class Parse_error;
+#
+package Parse_error;
+use Carp;
+
+sub new {
+    my $class		= shift;
+    my $description	= shift;
+    my $control_file	= shift;
+    my $line_number	= shift;
+
+    my $self = {};
+    bless $self, $class;
+
+    $self->Description($description);
+    $self->Control_file($control_file);
+    $self->Line_number($line_number);
+    return $self;
+}
+
+sub Description {
+    my $self		= shift;
+    my $description	= shift;
+
+    if ( defined $description ) {
+	$self->{DESCRIPTION} = $description;
+    }
+    return $self->{DESCRIPTION};
+}
+
+sub Control_file {
+    my $self		= shift;
+    my $control_file	= shift;
+
+    if ( defined $control_file ) {
+	if ( not ref $control_file eq "Control_file" ) {
+	    croak qq( Control file parameter must be a Control_file object);
+	}
+	$self->{CONTROL_FILE} = $control_file;
+    }
+    return $self->{CONTROL_FILE};
+}
+
+sub Line_number {
+    my $self		= shift;
+    my $line_number	= shift;
+
+    if ( defined $line_number ) {
+	if ( $line_number !~ /^\d+$/ ) {
+	    croak qq(Line number must be an integer);
+	}
+	$self->{LINE_NUMBER} = $line_number;
+    }
+    return $self->{LINE_NUMBER};
+}
+
+sub Get_error { 
+    my $self		= shift;
+
+    my $control_file	= $self->Control_file;
+    my $file_name 	= $control_file->Location;
+    my $location	= $control_file->Type;
+    my @file_contents	= $control_file->Contents;
+
+    #
+    # You need to push the line that has the error
+    # and the entire section which may mean lines
+    # before and after the error
+    #
+
+    my $line_number = $self->Line_number;
+    my $line = $file_contents[$line_number];
+    my @section_lines;
+    push @section_lines, "-> $line";
+    #
+    # Unshift lines before the error until at beginning
+    # of the control file, or at a section heading
+    #
+    while ( $line_number != 0
+	    and $file_contents[$line_number] !~ /^\s*\[/ ) {
+	$line_number--;
+	my $line = $file_contents[$line_number];
+	unshift @section_lines, "   $line";
+    }
+    #
+    # Push lines after error until next section
+    # hearder or the end of file
+    #
+    $line_number = $self->Line_number + 1;
+    while ( $line_number <= $#file_contents
+	    and $file_contents[$line_number] !~ /^\s*\[/ ) {
+	$line_number++;
+	my $line = $file_contents[$line_number];
+	push @section_lines, "    $line";
+
+    }
+    #
+    # Now generate the error message
+    #
+
+    my $description =  $self->Description . "\n";
+    $description .= "    Line# " . $self->Line_number . "\n";
+    $description .= "    ";
+    $description .= join "    \n", @section_lines;
+
+    return $description;
+}
+#
+# END: Class: Parse_error
+########################################################################
+
+########################################################################
+# Class Section_group
+#
+package Section_group;
+use Carp;
+
+sub new	{
+    my $class		= shift;
+
+    my $self = {};
+    bless $self, $class;
+    return $self;
+}
+
+sub Add {
+    my $self		= shift;
+    my $section		= shift;
+
+    if ( not defined $section ) {
+	croak qq(Need to pass in a "Section" object type);
+    }
+
+    if ( not $section->isa("Section") ) {
+	croak qq(Can only add "Section" object types);
+    }
+
+    my $section_class = ref $section;
+    ( my $section_type = $section_class )  =~ s/.*:://;
+
+    $section_type = ucfirst lc $section_type;
+    $self->$section_type($section);
+}
+
+sub Group {
+    my $self		= shift;
+    my $section		= shift;
+
+    $self->{GROUP} = [] if not exists $self->{GROUP};
+    if ( defined $section ) {
+	push @{ $self->{GROUP} }, $section;
+    }
+    my @groups = @{ $self->{GROUP} };
+    return wantarray ? @groups : \@groups;
+}
+
+sub File {
+    my $self		= shift;
+    my $section		= shift;
+
+    $self->{FILE} = [] if not exists $self->{FILE};
+    if ( defined $section ) {
+	push @{ $self->{FILE} }, $section;
+    }
+    my @files = @{ $self->{FILE} };
+    return wantarray ? @files : \@files;
+}
+
+sub Property {
+    my $self		= shift;
+    my $section		= shift;
+
+    $self->{PROPERTY} = [] if not exists $self->{PROPERTY};
+    if ( defined $section ) {
+	push @{ $self->{PROPERTY} }, $section;
+    }
+    my @properties = @{ $self->{PROPERTY} };
+    return wantarray ? @properties : \@properties;
+}
+
+sub Revprop {
+    my $self		= shift;
+    my $section		= shift;
+
+    $self->{REVPROP} = [] if not exists $self->{REVPROP};
+    if ( defined $section ) {
+	push @{ $self->{REVPROP} }, $section;
+    }
+    my @rev_props = @{ $self->{REVPROP} };
+    return wantarray ? @rev_props : \@rev_props;
+}
+
+sub Ban {
+    my $self		= shift;
+    my $section		= shift;
+
+    $self->{BAN} = [] if not exists $self->{BAN};
+    if ( defined $section ) {
+	push @{ $self->{BAN} }, $section;
+    }
+    my @bans = @{ $self->{BAN} };
+    return wantarray ? @bans : \@bans;
+}
+sub Ldap {
+    my $self		= shift;
+    my $section		= shift;
+
+    $self->{LDAP} = [] if not exists $self->{LDAP};
+    if ( defined $section ) {
+	push @{ $self->{LDAP} }, $section;
+    }
+    my @ldaps = @{ $self->{LDAP} };
+    return wantarray ? @ldaps : \@ldaps;
 }
