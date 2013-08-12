@@ -4,7 +4,6 @@
 
 use strict;
 use warnings;
-use feature qw(say);
 
 use Data::Dumper;
 use Getopt::Long;
@@ -62,7 +61,7 @@ if ( @configuration_errors ) {
 ########################################################################
 
 ########################################################################
-# Create Control File List
+# CREATE CONTROL FILE LIST
 #
 
 my @control_file_list;
@@ -86,8 +85,8 @@ my @parse_errors =  parse_control_files( $sections, \@control_file_list );
 
 if ( @parse_errors ) {
     for my $parse_error ( @parse_errors ) {
-	say $parse_error->Get_error;
-	say "-" x 72;
+	print $parse_error->Get_error . "\n";
+	print "-" x 72 . "\n";
     }
     exit 2;
 }
@@ -99,12 +98,51 @@ if ( exists $parameters{parse} ) {
     exit 0;
 }
 
-say Dumper $sections;
-say "-" x 72;
-say Dumper $configuration;
 #
 # END
 ########################################################################
+
+########################################################################
+# FIND ALL GROUPS AUTHOR IS IN
+#
+my @authors_groups = qw(all);	#Everyone is a member of "ALL"
+my %authors_group_index;
+#
+# LDAP Groups User Is In
+#
+for my $ldap ( $sections->Ldap ) {
+    push @authors_groups, $ldap->Ldap_groups($configuration->Ldap_user);
+}
+map { $authors_group_index{$_} = 1 } @authors_groups;
+#
+# Get Group List Defined in Control File
+#
+GROUP:
+for my $group ( $sections->Group ) {
+    my $group_name = lc $group->Description;
+    for my $user ( $group->Users ) {
+	if ( $user eq $configuration->Author ) { #Author is in this group
+	    push @authors_groups, $group_name;
+	    $authors_group_index{$group_name} = 1;
+	    next GROUP;
+	}
+	if ( $user =~ s/^\@(.+)/$1/ ) { #This is a group and not a user
+	    #
+	    # See if Author is a member of this group
+	    #
+	    my $group = $1;
+	    if ( $authors_group_index{$group} ) {
+		push @authors_groups, $group_name;
+		$authors_group_index{$group_name} = 1;
+		next GROUP;
+	    }
+	}
+    }
+}
+print  Dumper (\@authors_groups) . "\n";
+#
+########################################################################
+
 
 ########################################################################
 # SUBROUTINE check_options
@@ -350,7 +388,6 @@ sub Svnlook {
 #
 package Control_file;
 use Data::Dumper;
-use autodie;
 use Carp;
 
 use constant {
@@ -389,10 +426,8 @@ sub new {
 
     if ( $type eq FILE_ON_SERVER ) {
 	my $control_file_fh;
-	eval { open $control_file_fh, "<", $location; };
-	if ( $@ ) {
+	open $control_file_fh, "<", $location or
 	    croak qq(Invalid Control file "$location" on server.);
-	}
 	my @file_contents = <$control_file_fh>;
 	close $control_file_fh;
 	chomp @file_contents;
@@ -558,7 +593,6 @@ sub Verify_parameters {
     my $req_method_ref	= shift;
 
     my @req_methods = $req_method_ref;
-    #say Dumper \@req_methods;
 
 #
 # Call the various methods
@@ -616,12 +650,13 @@ sub Users {
     my $users		= shift;
 
     if ( defined $users ) {
-	my @users = split /[\s,]+/, $users;
-	$self->{USERS} = \@users;
-}
-
-my @users = @{ $self->{USERS} };
-return wantarray ? @users : \@users;
+	$self->{USERS} = [];	#Redefines all users: Don't add new ones
+	for my $user ( split /[\s,]+/, $users ) {
+	    push @{ $self->{USERS} }, lc $user;
+	}
+    }
+    my @users = @{ $self->{USERS} };
+    return wantarray ? @users : \@users;
 }
 #
 
@@ -969,6 +1004,19 @@ BEGIN {
 }
 our $ldap_available;
 
+sub Description {
+    my $self		= shift;
+    my $description	= shift;
+
+    if ( not $ldap_available ) {
+	carp qq(ERROR: Need to install Perl module Net::LDAP\n)
+	. qq(       to be able to use LDAP groups);
+	croak qq(Need to install Perl module Net::LDAP);
+    }
+    return $self->SUPER::Description( $description );
+}
+
+
 sub Ldap {
     my $self		= shift;
 
@@ -991,7 +1039,7 @@ sub Username_attr {
     if ( not exists $self->{USER_NAME_ATTR} ) {
 	$self->{USER_NAME_ATTR} = DEFAULT_NAME_ATTR;
     }
-    return $self->{LDAP_ACCT_ATTR};
+    return $self->{USER_NAME_ATTR};
 }
 
 sub Group_attr {
@@ -1054,7 +1102,7 @@ sub Timeout {
     return $self->{TIMEOUT};
 }
 
-sub Ldap_Groups {
+sub Ldap_groups {
     my $self		= shift;
     my $user		= shift;
 
@@ -1077,7 +1125,7 @@ sub Ldap_Groups {
     my $ldap = Net::LDAP->new( $ldap_servers, timeout => $timeout, onerror => "die" );
     if ( not defined $ldap ) {
 	croak qq(Could not connect to LDAP servers:)
-	. join ", ", @{ $ldap } . qq( Timeout = $timeout );
+	. join( ", ", @{ $ldap_servers } ) . qq( Timeout = $timeout );
     }
     #
     # Try a bind
@@ -1107,18 +1155,21 @@ sub Ldap_Groups {
     eval {
 	if ( $search_base ) {
 	    $search = $ldap->search(
-		basename => $search_base,
-		filter => "($username_attr=$user)",
+		{
+		    basename => $search_base,
+		    filter => "$username_attr=$user",
+		}
 	    );
 	}
 	else {
-	    $search = $ldap->search(
-		filter => "($username_attr=$user)",
-	    );
+	    my %hash;
+	    $hash{filter} = "($username_attr=$user)";
+	    print "$hash{filter}\n";
+	    $search = $ldap->search(%hash);
 	}
     };
     if ( $@ ) {
-	croak qq(Search of LDAP tree failed);
+	croak qq(Search of LDAP tree failed ($username_attr=$user));
     }
 
     #
