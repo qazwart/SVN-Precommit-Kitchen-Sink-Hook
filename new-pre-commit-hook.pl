@@ -82,7 +82,28 @@ for my $control_file ( @{ $parameters{filelocations} } ) {
 
 my $sections = Section_group->new;
 my @parse_errors =  parse_control_files( $sections, \@control_file_list );
+#
+########################################################################
 
+########################################################################
+# Verify that all required parameters exist
+#
+for my $method ( $sections->Sections ) {
+    for my $section ( $sections->$method ) {
+	eval { $section->Verify_parameters; };
+	if ($@) {
+	    my $control_file = $section->Control_file;
+	    my $line_number = $section->Control_file_line;
+	    push @parse_errors, Parse_error->new($@, $control_file, $line_number);
+	}
+    }
+}
+#
+########################################################################
+
+########################################################################
+# Display Errors and Dump on Parse
+#
 if ( @parse_errors ) {
     for my $parse_error ( @parse_errors ) {
 	print $parse_error->Get_error . "\n";
@@ -90,6 +111,7 @@ if ( @parse_errors ) {
     }
     exit 2;
 }
+
 if ( exists $parameters{parse} ) {
     print qq(Control files are valid\n);
     print "Resulting structure:\n";
@@ -101,6 +123,8 @@ if ( exists $parameters{parse} ) {
 #
 # END
 ########################################################################
+
+
 
 ########################################################################
 # FIND ALL GROUPS AUTHOR IS IN
@@ -139,7 +163,6 @@ for my $group ( $sections->Group ) {
 	}
     }
 }
-print  Dumper (\@authors_groups) . "\n";
 #
 ########################################################################
 
@@ -592,18 +615,18 @@ sub Verify_parameters {
     my $self		= shift;
     my $req_method_ref	= shift;
 
-    my @req_methods = $req_method_ref;
+    my @req_methods = @{ $req_method_ref };
 
-#
-# Call the various methods
-#
-for my $method ( @req_methods ) {
-    $method = ucfirst lc $method;
-    if ( not $self->$method ) {
-	croak qq(Missing required parameter "$method");
+    #
+    # Call the various methods
+    #
+    for my $method ( @req_methods ) {
+	$method = ucfirst lc $method;
+	if ( not $self->$method ) {
+	    croak qq(Missing required parameter "$method");
+	}
     }
-}
-return 1;
+    return 1;
 }
 
 sub glob2regex {
@@ -640,6 +663,7 @@ sub glob2regex {
 # CLASS: Section::Group
 #
 package Section::Group;
+use Data::Dumper;
 use base qw(Section);
 use Carp;
 
@@ -658,13 +682,12 @@ sub Users {
     my @users = @{ $self->{USERS} };
     return wantarray ? @users : \@users;
 }
-#
 
 sub Verify_parameters {
     my $self =		shift;
-    my $required =	\@{ +REQ_PARAMETERS };
 
-return $self->SUPER::Verify_parameters($required);
+    my @required_parameters = REQ_PARAMETERS;
+    return $self->SUPER::Verify_parameters( \@required_parameters );
 }
 #
 # END: CLASS: Section::Group
@@ -752,9 +775,9 @@ return wantarray ? @users : \@users;
 
 sub Verify_parameters {
     my $self =		shift;
-    my $required =	\@{ +REQ_PARAMETERS };
 
-return $self->SUPER::Verify_parameters($required);
+    my @required_parameters =	REQ_PARAMETERS;
+    return $self->SUPER::Verify_parameters( \@required_parameters );
 }
 #
 # END: CLASS Section::Group
@@ -847,9 +870,9 @@ sub Type {
 
 sub Verify_parameters {
     my $self =		shift;
-    my $required =	\@{ +REQ_PARAMETERS };
 
-return $self->SUPER::Verify_parameters($required);
+    my @required_parameters = REQ_PARAMETERS;
+    return $self->SUPER::Verify_parameters( \@required_parameters );
 }
 #
 # END: Class: Section::Property
@@ -920,9 +943,9 @@ sub Type {
 
 sub Verify_parameters {
     my $self =		shift;
-    my $required =	\@{ +REQ_PARAMETERS };
 
-return $self->SUPER::Verify_parameters($required);
+    my @required_parameters = REQ_PARAMETERS;
+    return $self->SUPER::Verify_parameters( \@required_parameters );
 }
 #
 # END: Class: Section::Revprop
@@ -975,9 +998,9 @@ sub Case {
 
 sub Verify_parameters {
     my $self =		shift;
-    my $required =	\@{ +REQ_PARAMETERS };
 
-return $self->SUPER::Verify_parameters($required);
+    my @required_parameters = REQ_PARAMETERS;
+    return $self->SUPER::Verify_parameters( \@required_parameters );
 }
 #
 # END: Class Section::Ban
@@ -987,10 +1010,11 @@ return $self->SUPER::Verify_parameters($required);
 # Class Section::Ldap
 #
 package Section::Ldap;
+use Data::Dumper;
 use Carp;
 use base qw(Section);
 
-use constant REQ_PARAMETERS	=> qw(ldap);
+use constant REQ_PARAMETERS	=> qw(ldap base);
 
 use constant {
     DEFAULT_NAME_ATTR	=> "sAMAccountName",
@@ -1055,6 +1079,16 @@ sub Group_attr {
     return $self->{GROUP_ATTR};
 }
 
+sub Base {
+    my $self		= shift;
+    my $base		= shift;
+
+    if ( defined $base) {
+	$self->{BASE} = $base;
+    }
+    return $self->{BASE};
+}
+
 sub User_dn {
     my $self		= shift;
     my $user_dn		= shift;
@@ -1109,7 +1143,6 @@ sub Ldap_groups {
     my $ldap_servers	= $self->Ldap;
     my $user_dn		= $self->User_dn;
     my $password	= $self->Password;
-    my $search_base	= $self->Search_base;
     my $timeout		= $self->Timeout;
 
     my $username_attr	= $self->Username_attr;
@@ -1122,7 +1155,10 @@ sub Ldap_groups {
     #
     # Create LDAP Object
     #
-    my $ldap = Net::LDAP->new( $ldap_servers, timeout => $timeout, onerror => "die" );
+    my $ldap = Net::LDAP->new( $ldap_servers,
+	timeout => $timeout,
+	onerror => "die"
+    );
     if ( not defined $ldap ) {
 	croak qq(Could not connect to LDAP servers:)
 	. join( ", ", @{ $ldap_servers } ) . qq( Timeout = $timeout );
@@ -1130,15 +1166,16 @@ sub Ldap_groups {
     #
     # Try a bind
     #
+    my $message;
     eval {
 	if ( $user_dn and $password ) {
-	    $ldap->bind( $user_dn, password => $password );
+	    $message = $ldap->bind( $user_dn, password => $password );
 	}
 	elsif ( $user_dn and not $password ) {
-	    $ldap->bind( $user_dn );
+	    $message = $ldap->bind( $user_dn );
 	}
 	else {
-	    $ldap->bind;
+	    $message = $ldap->bind;
 	}
     };
     if ( $@ ) {
@@ -1151,21 +1188,34 @@ sub Ldap_groups {
     # Search
     #
 
+    my $search_base	= $self->Search_base;
+    my $base_dn		= $self->Base;
     my $search;
+    if ( not $base_dn ) {
+	croak qq(Missing Base DN definition. Cannot do LDAP Search for groups);
+    }
     eval {
 	if ( $search_base ) {
+	    print qq/DEBUG: \$search = \$ldap->search(
+		base => $base_dn,
+		basename => $search_base,
+		filter => "($username_attr=$user)",
+	    );\n/;
 	    $search = $ldap->search(
-		{
-		    basename => $search_base,
-		    filter => "$username_attr=$user",
-		}
+		base => $base_dn,
+		basename => $search_base,
+		filter => "($username_attr=$user)",
 	    );
 	}
 	else {
-	    my %hash;
-	    $hash{filter} = "($username_attr=$user)";
-	    print "$hash{filter}\n";
-	    $search = $ldap->search(%hash);
+	    print qq/DEBUG: \$search = \$ldap->search(
+		base => $base_dn,
+		filter => "($username_attr=$user)",
+	    );\n/;
+	    $search = $ldap->search(
+		base => $base_dn,
+		filter => "($username_attr=$user)"
+	    );
 	}
     };
     if ( $@ ) {
@@ -1190,6 +1240,13 @@ sub Ldap_groups {
 	push @groups, $group;
     }
     return wantarray ? @groups : \@groups;
+}
+
+sub Verify_parameters {
+    my $self =		shift;
+
+    my @required_parameters = REQ_PARAMETERS;
+    return $self->SUPER::Verify_parameters( \@required_parameters );
 }
 #
 # END: Class: Section::Ldap
@@ -1299,13 +1356,13 @@ sub Get_error {
 
     my $description =  "ERROR: In parsing Control File";
     $description .= qq( "$file_name" ($location));
-    $description .= " Line# " . $self->Line_number . "\n";
-    $description .= "    " . $self->Description . "\n";
-    for my $line ( @section_lines ) {
-	$description .= "    $line\n";
-    }
+$description .= " Line# " . $self->Line_number . "\n";
+$description .= "    " . $self->Description . "\n";
+for my $line ( @section_lines ) {
+    $description .= "    $line\n";
+}
 
-    return $description;
+return $description;
 }
 #
 # END: Class: Parse_error
@@ -1342,6 +1399,13 @@ sub Add {
 
     $section_type = ucfirst lc $section_type;
     $self->$section_type($section);
+}
+
+sub Sections {
+    my $self		= shift;
+
+    my @sections = qw(Group File Property Revprop Ban Ldap);
+    return wantarray ? @sections : \@sections;
 }
 
 sub Group {
