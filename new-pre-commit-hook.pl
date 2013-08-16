@@ -69,7 +69,7 @@ if ( @configuration_errors ) {
 ########################################################################
 
 ########################################################################
-# MAIN PROGRAM
+# nAIN PROGRAM
 #
 
 #
@@ -184,7 +184,8 @@ while ( my $line = <$cmd_fh> ) {
 # Now check for Revision Properties
 #
 
-push @violations, check_revision_properties( $sections->Revprop );
+my $prop_rules_ref = $sections->Revprop;
+push @violations, check_revision_properties( $prop_rules_ref, $configuration);
 
 #
 # If there are violations, report them
@@ -195,7 +196,9 @@ if ( @violations ) {
 	my $file = $violation->File;
 	my $error = $violation->Error;
 	my $policy = $violation->Policy;
-	print STDERR qq(COMMIT VIOLATION: In "$file"\n);
+	print STDERR qq(COMMIT VIOLATION:);
+	print STDERR qq( In "$file") if $file;
+	print STDERR qq(\n);
 	print STDERR qq(    $policy\n);
 	print STDERR qq(    $error\n);
 	print "-" x 72 . "\n";
@@ -598,7 +601,7 @@ sub check_properties {
     for my $prop_rule ( @{ $prop_rules_ref } ) {
 	my $regex = $prop_rule->Match;
 	if ( ( $prop_rule->Case eq "ignore" and $file !~ /$regex/i )
-		or $prop_rule->Case eq "ignore" and $file !~ /$regex/ ) {
+		or ( not $prop_rule->Case eq "ignore" and $file !~ /$regex/ ) ) {
 	    next PROP_RULE;	# This rule doesn't apply to the file
 	}
 	
@@ -634,7 +637,7 @@ sub check_properties {
 		next PROP_RULE;
 	    }
 	    elsif ( $prop_rule->Type eq "regex" 
-		    and $properties{$property} !~ /$regex/ ) {
+		    and $properties{$property} !~ /$prop_value/ ) {
 		my $violation = Violation->new( $file, $prop_rule->Description );
 		$violation->Politcy( qq(Property "$property" did not match regex "$prop_value") );
 		push @violations, $violation;
@@ -643,6 +646,91 @@ sub check_properties {
 	    else {	# Invalid type: Cannot check rule
 		my $violation = Violation->new( $file, $prop_rule->Description );
 		$violation->Policy( qq(Bad property type on "$property" in control file) );
+		push @violations, $violation;
+		next PROP_RULE;
+	    }
+	}	#NEXT PROP_RULE
+
+    } 
+    return @violations;
+}
+
+sub check_revision_properties {
+    my $prop_rules_ref	= shift;
+    my $configuration	= shift;
+
+    my @violations;
+    my %properties;	# Properties on the file
+
+    #
+    # Fetch all current properties and their values for this file
+    #
+    my $command = join ( " ",	#Find what properties the file has
+	$configuration->Svnlook,
+	SVNLOOK_PROPLIST,
+	"--revprop",
+	$configuration->Rev_param,
+	$configuration->Repository,
+    );
+
+    my @revprops = qx($command);
+    chomp @revprops;
+    for my $property ( @revprops ) {
+	$property =~ s/^\s*//;
+	my $command = join ( " ",
+	    $configuration->Svnlook,
+	    SVNLOOK_PROPGET,
+	    "--revprop",
+	    $configuration->Rev_param,
+	    $configuration->Repository,
+	    $property,
+	);
+	chomp ( $properties{$property} = qx($command) );
+    }
+
+    #
+    # We now have a list of properties and their values. Let's see which ones we need
+    #
+    PROP_RULE:
+    for my $prop_rule ( @{ $prop_rules_ref } ) {
+	my $property = $prop_rule->Property;
+	if ( not exists $properties{$property} ) { #Missing property
+	    my $violation = Violation->new( "", $prop_rule->Description );
+	    $violation->Policy( qq(Missing revision property "$property" on commit) );
+	    push @violations, $violation;
+	    next PROP_RULE;
+	}
+
+	#
+	# File has that property: See if the value matches what it should be
+	#
+	else {    #Property exists: See if it matches
+	    my $prop_value = $prop_rule->Value;
+	    if    ( $prop_rule->Type eq "string"
+		    and $properties{$property} ne $prop_value ) {
+		my $violation = Violation->new( "", $prop_rule->Description );
+		$violation->Policy( qq(Revision Property "$property" did not match value "$prop_value") );
+		push @violations, $violation;
+		next PROP_RULE;
+
+	    }
+	    elsif ( $prop_rule->Type eq "number"
+		    and $properties{$property} != $prop_value ) {
+		my $violation = Violation->new( "", $prop_rule->Description );
+		$violation->Politcy( qq(Revision property "$property" did not equal "$prop_value") );
+		push @violations, $violation;
+		next PROP_RULE;
+	    }
+	    elsif ( $prop_rule->Type eq "regex" 
+		    and $properties{$property} !~ /$prop_value/ ) {
+		my $violation = Violation->new( "", $prop_rule->Description );
+		$violation->Policy( qq(Revision property "$property" did not match regex "$prop_value") );
+		push @violations, $violation;
+		next PROP_RULE;
+	    }
+	    else {	# Invalid type: Cannot check rule
+		my $violation = Violation->new( "", $prop_rule->Description );
+		$violation->Policy( qq(Bad revision property type on "$property" in control file) );
 		push @violations, $violation;
 		next PROP_RULE;
 	    }
@@ -1776,8 +1864,13 @@ sub Group {
     if ( defined $section ) {
 	push @{ $self->{GROUP} }, $section;
     }
-    my @groups = @{ $self->{GROUP} };
-    return wantarray ? @groups : \@groups;
+    if ( exists $self->{GROUP} ) {
+	my @groups = @{ $self->{GROUP} };
+	return wantarray ? @groups : \@groups;
+    }
+    else {
+	return;
+    }
 }
 
 sub File {
@@ -1787,8 +1880,13 @@ sub File {
     if ( defined $section ) {
 	push @{ $self->{FILE} }, $section;
     }
-    my @files = @{ $self->{FILE} };
-    return wantarray ? @files : \@files;
+    if ( exists $self->{FILE} ) {
+	my @files = @{ $self->{FILE} };
+	return wantarray ? @files : \@files;
+    }
+    else {
+	return;
+    }
 }
 
 sub Property {
@@ -1798,8 +1896,13 @@ sub Property {
     if ( defined $section ) {
 	push @{ $self->{PROPERTY} }, $section;
     }
-    my @properties = @{ $self->{PROPERTY} };
-    return wantarray ? @properties : \@properties;
+    if ( exists $self->{PROPERTY} ) {
+	my @properties = @{ $self->{PROPERTY} };
+	return wantarray ? @properties : \@properties;
+    }
+    else {
+	return;
+    }
 }
 
 sub Revprop {
@@ -1809,8 +1912,13 @@ sub Revprop {
     if ( defined $section ) {
 	push @{ $self->{REVPROP} }, $section;
     }
-    my @rev_props = @{ $self->{REVPROP} };
-    return wantarray ? @rev_props : \@rev_props;
+    if ( exists $self->{REVPROP} ) {
+	my @rev_props = @{ $self->{REVPROP} };
+	return wantarray ? @rev_props : \@rev_props;
+}
+else {
+    return;
+}
 }
 
 sub Ban {
@@ -1820,9 +1928,15 @@ sub Ban {
     if ( defined $section ) {
 	push @{ $self->{BAN} }, $section;
     }
-    my @bans = @{ $self->{BAN} };
-    return wantarray ? @bans : \@bans;
+    if ( exists $self->{BAN} ) {
+	my @bans = @{ $self->{BAN} };
+	return wantarray ? @bans : \@bans;
 }
+else {
+    return;
+}
+}
+
 sub Ldap {
     my $self		= shift;
     my $section		= shift;
@@ -1830,8 +1944,13 @@ sub Ldap {
     if ( defined $section ) {
 	push @{ $self->{LDAP} }, $section;
     }
-    my @ldaps = @{ $self->{LDAP} };
-    return wantarray ? @ldaps : \@ldaps;
+    if ( exists $self->{LDAP} ) {
+	my @ldaps = @{ $self->{LDAP} };
+	return wantarray ? @ldaps : \@ldaps;
+    }
+    else {
+	return;
+    }
 }
 #
 ########################################################################
@@ -1839,6 +1958,7 @@ sub Ldap {
 ########################################################################
 # CLASS Violation
 #
+
 package Violation;
 
 sub new {
