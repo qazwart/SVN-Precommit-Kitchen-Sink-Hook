@@ -69,7 +69,7 @@ if ( @configuration_errors ) {
 ########################################################################
 
 ########################################################################
-# nAIN PROGRAM
+# MAIN PROGRAM
 #
 
 #
@@ -128,11 +128,12 @@ my @authors_groups = find_groups ( $sections );
 #
 
 my $files_rules_ref = $sections->File;
-my @purged_file_rules = purge_file_rules (
+my $purged_file_rules_ref = purge_file_rules (
     $files_rules_ref,
     $configuration->Author,
     \@authors_groups,
 );
+
 
 #
 # Go through all files in the commit and look for file permissions,
@@ -162,8 +163,7 @@ while ( my $line = <$cmd_fh> ) {
     $line =~ /\s*(\w)\s+(.*)/;
     my $change_type = $1;
     my $file = "/$2";	#Prepend "/" for root
-    my $file_rules_ref = $sections->File;
-    push @violations, check_file( $file_rules_ref, $file, $change_type );
+    push @violations, check_file( $purged_file_rules_ref, $file, $change_type );
     if ( $change_type eq ADDED ) {
 	my $ban_rules_ref = $sections->Ban;
 	push @violations, check_bans( $ban_rules_ref, $file );
@@ -276,7 +276,7 @@ sub check_options {
     if ( exists $parameters{r} ) {
 	$configuration->Rev_param( "-r $parameters{r}" );
     }
-    else {
+    elsif ( exists $parameters{t} ) {
 	$configuration->Rev_param( "-t $parameters{t}" );
     }
 
@@ -461,6 +461,9 @@ sub find_groups {
 # 		Section::File types. Unnecessary rules are rules
 # 		that don't involve the author (i.e., the author nor
 # 		one of the groups the author is in is in File->Users).
+#
+#               This also will substitute the <USER> string for the author's
+#               name.
 # Parameter:
 #    @file_rules:	A list of Section::File object types.
 #    $author:		The author.
@@ -480,6 +483,13 @@ sub purge_file_rules {
 
     my @purged_file_rules;
     for my $file_rule ( @{ $file_rules_ref } ) {
+	my $regex = $file_rule->Match;
+	#
+	# Substitute <USER> with author's name
+	#
+	if ( $regex =~ s/<USER>/$author/g ) {
+	    $file_rule->Match($regex);
+	}
 	for my $user ( $file_rule->Users ) {
 	    if ( $user =~ /^\@(.*)/ ) { 	#This is a group
 		my $group = $1;
@@ -492,9 +502,9 @@ sub purge_file_rules {
 		    push @purged_file_rules, $file_rule;
 		}
 	    }
-	} 	#for my $user ( $file_rule->Users ) {
-    }	#for my $file_rule ( @{ $file_rules_ref } ) {
-    return @purged_file_rules;
+	} 	#for my $user ( $file_rule->Users )
+    }	#for my $file_rule ( @{ $file_rules_ref } )
+    return wantarray ? @purged_file_rules: \@purged_file_rules;
 }
 #
 ########################################################################
@@ -1257,7 +1267,7 @@ sub Verify_parameters {
     return $self->SUPER::Verify_parameters( \@required_parameters );
 }
 #
-# END: CLASS Section::Group
+# END: CLASS Section::File
 ########################################################################
 
 ########################################################################
@@ -1853,7 +1863,15 @@ sub Add {
 sub Sections {
     my $self		= shift;
 
-    my @sections = qw(Group File Property Revprop Ban Ldap);
+    my @sections;
+    for my $symbol ( %key %Section_group ) {
+	next if $symbol ne lcfirst lc $symbol	# My methods have a particular syntax
+	next if $symbol eq "new";	# This is a constructor
+	next if $symbol eq "Add";	# Not interested in this method
+	next if $symbol eq "Sections";	# This is it's own method
+	push @sections, $symbol if $self->can($symbol);
+    }
+
     return wantarray ? @sections : \@sections;
 }
 
@@ -1878,7 +1896,11 @@ sub File {
     my $section		= shift;
 
     if ( defined $section ) {
-	push @{ $self->{FILE} }, $section;
+	if ( ref $section eq "ARRAY" ) {   #Replacement of current contents
+	    $self->{SECTION} = $section;
+	} else {
+	    push @{ $self->{FILE} }, $section;
+	}
     }
     if ( exists $self->{FILE} ) {
 	my @files = @{ $self->{FILE} };
@@ -1915,10 +1937,10 @@ sub Revprop {
     if ( exists $self->{REVPROP} ) {
 	my @rev_props = @{ $self->{REVPROP} };
 	return wantarray ? @rev_props : \@rev_props;
-}
-else {
-    return;
-}
+    }
+    else {
+	return;
+    }
 }
 
 sub Ban {
@@ -1931,10 +1953,10 @@ sub Ban {
     if ( exists $self->{BAN} ) {
 	my @bans = @{ $self->{BAN} };
 	return wantarray ? @bans : \@bans;
-}
-else {
-    return;
-}
+    }
+    else {
+	return;
+    }
 }
 
 sub Ldap {
@@ -1953,6 +1975,7 @@ sub Ldap {
     }
 }
 #
+# END: Class: Section_group
 ########################################################################
 
 ########################################################################
@@ -2005,3 +2028,810 @@ sub Error {
     }
     return $self->{ERROR};
 }
+#
+# END: Class: Violations
+########################################################################
+
+########################################################################
+# POD DOCUMENTATION
+#
+=pod
+
+=head1 NAME
+
+new-pre-commit-hook.pl
+
+=head1 SYNOPSIS
+
+    new-pre-commit-hook.pl [-file <ctrlFile>] \\
+	[-fileloc <cntrlFile>] (-r<revision>|-t<transaction>) \\
+	[-parse] [-svnlook <svnlookCmd>] [<repository>]
+
+    new-pre-commit-hook.pl -help
+
+    new-pre-commit-hook.pl -options
+
+=head1 DESCRIPTION
+
+This is a Subversion pre-commit hook that can check for several issues
+at once:
+
+=over 2
+
+=item *
+
+This hook can verify that a particular user has permission to change a
+file. The file can be specified as either a I<glob> or I<regex> format.
+Even better, you can also specify an I<ADD-ONLY> setting that allows you
+to create tags via an C<svn copy>, but won't allow you to modify the
+files in that directory. This protects tags from being modified by a
+user.
+
+=item *
+
+This hook can verify that a particular property has a particular value
+and has been set on a particular file. You can specify the files via
+I<regex> or I<glob> format, and you can specity the value of the
+property either via a I<string>, I<regex>, or I<numeric> value.
+
+=item *
+
+This hook can prevent the user from adding files with banned names. For
+example, in Windows you cannot have a file that starts with  C<aux> or
+C<prn> or C<con>. You also can't have file names that have C<:>, C<^>,
+and several other types of characters in them. You may also want to ban
+file names that have spaces in them since these tend to cause problems
+with some utilities. This only affects newly added or renamed files, and
+not current files.
+
+=item *
+
+This hook can also verify that particular revision properties are set.
+However, this only works on Subversion release 1.5 or greater. But,
+since Subversion release 1.4 is no longer supported, you really
+shouldn't be using releases older than 1.5 anyway.
+
+=back
+
+This hook works through a control file that is in standard Windows
+Inifile format (described below). This allows you to set permissions and
+other changes without having to modify this program itself.
+
+=head1 OPTIONS
+
+=head2 Control File Definition
+
+The I<Control File> controls the way this hook operates. It can control
+the permissions you're granting to various users, your group
+definitions, what names are not allowed in your repository, and the
+properties associated with the file and revision.
+
+There are two places where the control file can be stored. The first is
+inside the Subversion repository server as a physical text file. This
+keeps the control file away from prying eyes. Unfortunately, it means
+that you must have login access to the repository server in order to
+maintain the file.
+
+The other place is inside the repository itself. This makes it easy to
+maintain. Plus, since it's in a Subversion repository, you'll see who
+changed this file, when, and why. That can be nice for auditing.
+Unfortunately, this file will be visible to everyone. If you have an
+LDAP password in that file, you'll be exposing that password to all of
+your users.
+
+You are allowed to use either a physcial control file, a control file
+stored in the repository, or both. You must have at least one or the
+other defined.
+
+Format of the control file is discussed below. See L<CONTROL FILE
+LAYOUT>
+
+=over 10
+
+=item -file
+
+The location of the physical text control file stored on the Subversion
+repository server. Normally, this is kept in the F<hooks> directory
+under the Subversion repository directory.
+
+=item -filelocations
+
+The locations of the various control files inside the Subversion
+repository. This should use the C<svnlook> format. For exmaple, if you
+have a directory called F<control> under the root of your repository,
+and inside, your control file is called C<control.ini>, the value of
+this parameter would be F</control/control.ini>.
+
+=back
+
+=head2 Other Options
+
+=over 10
+
+=item -r
+
+The Subversion repository revision. Normally, this is only used for
+testing purposes since you really want the transaction number of the
+commit and not the revision number. Good for testing. This parameter
+cannot be used at the same time as the C<-t> parameter.
+
+=item -t
+
+The Subversion repository Transaction Number. This is passed to the
+scrip pre-commit found in the Repository's hook directory as a
+parameter. You need to modify the pre-commit script to pass the
+transaction number to this script.
+
+=item -svnlook
+
+This is the full path to the svnlook command. The full path is needed
+because for security reasons, the C<PATH> environment variable is empty
+when the hook is executed. Default is /usr/bin/svnlook.
+
+=item -parse
+
+Used mainly for debugging. This will dump out the entire configuration file
+structure, so you can verify your work. It will also test the control file
+and let you know if there are any errors.
+
+=item -help
+
+Prints a helpful message showing the different parameters used in
+running this pre-commit hook script.
+
+=item -documentation
+
+Displays this complete documentation of this hook
+
+=item <repository>
+
+The location of the Subversion repository's physical directory. Default
+is the parent directory.
+
+=back
+
+=head1 CONTROL FILE LAYOUT
+
+The hook is controlled by a user defined control file. The control is in
+Windows' IniFile layout. This layout consists of I<Comments>, I<Section
+Headings>, and I<Parameter Lines>.
+
+=head2 Comments
+
+Comment lines begin with either a C<#>, or a C<;> or a C<'>. Blank lines
+are also ignored. All other lines must either be a Parameter Line or a
+Section Heading.
+
+=head2 Basic Layout
+
+The basic layout is a Section Heading followed by a bunch of Parameter
+Lines.
+
+Section headings are enclosed in square brackets. The first word
+in a section heading is the type of section it is (Group, File,
+Property, Revprop, or Ban). The rest is a description of that section
+heading. For example:
+
+    [File Users may not modify a tag.]
+
+In the above example, the section is I<File> and the description is
+I<Users may not modify a tag.>. 
+
+Unlike in L<Config/IniFile>, the descriptions don't have to be unique.
+However, the descriptions are used in user error messages, so be sure
+to put in a good description that is user friendly. For example:
+
+    [File Only approved users may modify the Control File]
+
+is a better section heading than:
+
+    [File Read-only on Control.properties]
+
+Under each section is a series of Parameter lines that apply to that section.
+
+Parameter Lines are in the form of
+
+    <Key> = <Value>
+
+where I<Key> is the parameter key, and I<Value> is the value for that
+parameter. Notice that the two are separated by an equal sign. Spaces
+around the equal sign are optional, and the I<Value> is the entire line
+including spaces on the end of the line, so be careful.
+
+The layouts of the various sections and their permitted parameters are
+explained below. Note that section type names and parameter keys are
+case insensitive.
+
+=head3 Group
+
+This is used to define user groups which can be used to define file
+permissions. This makes it easier to keep track of file permissions as
+people move from project to project. You only have to change the group
+definition.
+
+The section layout is thus:
+
+    [GROUP <GroupName>]
+    users = <ListOfUsers>
+
+The C<GroupName> is the name of the group. Group names should be
+composed of just letters, numbers, and underscores, and should contain
+no white space. Group names are case insensitive.
+
+User names in this hook substitute an underscore for a space and ignore case
+For example, if the user signs into Subversion as I<john doe>, their user name
+will become I<john_doe>. User names cannot start with an I<at sign> (@).
+
+The C<ListOfUsers> is either a whitespace or comma separated list of user
+names. This list can also contain the names of other groups. However, the
+groups are calculated from the top of the control file to the bottom, so
+if group "A" is contained inside group "B", you must define group "A" before
+you define group "B".
+
+    [GROUP developers]
+    users = larry, moe, curly
+
+    [group admins]
+    users = tom, dick, harry
+
+    [group foo]
+    users = @developers, @admins, @bar, alice
+
+    [group bar]
+    users = bob, ted, carol
+
+In the above example, everyone in group I<DEVELOPERS> and group I<ADMINS>
+is in group I<FOO>. However, members of group I<BAR> won't be included.
+
+=head3 File
+
+A file Section Heading starts with the word C<file> and an explanation
+of that section. It then consists of the following parameters:
+
+=over 7
+
+=item match
+
+A Perl style expanded regular expression matching the files that are
+affected by this permission definition. Note this cannot be used with
+the C<file> parameter.
+
+If the C<match> string contains the text E<lt>USERE<gt>, this text
+will be substituted by the name of the user from the C<svnlook author>
+command. This is done to allow you to create special user directories or
+files that only that user can modify. For example:
+
+    [FILE Users can only modify their own watchfiles]
+    match = ^/watchfiles/.*
+    access = read-only
+    users = @ALL
+
+    [FILE Allow user to edit their own watchfiles]
+    match = ^/watchfiles/<USER>\.cfg$
+    access = read-write
+    users = @ALL
+
+The above will prevent users from modifying each other watch files, but
+will allow them to modify their own watch files.
+
+B<Word o' Warning>: This script normalizes user ID to all caps. This
+means that if the user name is I<bob>, it will become I<BOB>. Thus,
+I<< <USER> >> also becomes F<BOB>.
+
+
+=item file
+
+An Ant style  globbing expression matching the files that are affected
+by this permission definition. This cannot be used with the C<match>
+parameter.
+
+Regular expressions are much more flexible, but most people are not too
+familiar with them. In a file glob expression, an asterisk (*)
+represents any number of characters inside of a directory. Double
+asterisk (**) are used to represent any number of directory levels. A
+single quesion mark (?) represents any character. All glob expressions
+are anchored to the front of the line and the back of the line.
+
+Therefore:
+
+    file = *.jpg
+
+does not mean any file that end with C<jpg>, but only files in the root
+of the repository that end with C<jpg>. To mean all files, you need to
+unanchor the glob expression as thus:
+
+    file = **/*.jpg
+
+Notice too that directory names will end with a final slash which is
+a great way to distinguish between a file being added or deleted
+and a directory being added or deleted. For example:
+
+    file = /tags/*/
+
+will refer only to directories that are subdirectories directly under the
+tags directory, and not to files. You'll see this is a great way to protect
+your tagged versions from being modified when L<access> is discussed below.
+
+If the C<file> string contains the text C<E<lt>USERE<gt>>, this text
+will be substituted by the name of the user from the C<svnlook author>
+command. This is done to allow you to create special user directories or
+files that only that user can modify. For example:
+
+    [FILE Users can only modify their own watchfiles]
+    file = /watchfiles/**
+    access = read-only
+    users = @ALL
+
+    [FILE Allow user to edit their own watchfiles]
+    file = /watchfiles/<USER>.cfg
+    access = read-write
+    users = @ALL
+
+The above will prevent users from modifying each other watch files, but
+will allow them to modify their own watch files.
+
+=item users
+
+A list of all users who are affected by this type of access. Groups can
+be used in a user list if preceeded by an I<at sign> (@). There is one
+special group called C<@ALL> that represents all users.
+
+=item access
+
+The access permission on that file. Notice that there is no permission
+for preventing a user from seeing the contents of the file, only for
+changing the file. This is because the trigger is on the C<commit>
+and not on C<checkout>. If you need to prevent people from seeing
+the file, you must do this with your repository access.
+
+Access is determined in a top down fashion in the control file. The first
+entry might take a particular user's ability to commit changes to a particular
+file, but a section further down might allow that same user the ability
+to commit changes to that same file. While the third might remove it again.
+
+Access is granted or denied by the B<last> matching access grant.
+
+=over 10
+
+=item read-write
+
+Files marked as C<read-write> means that the user may commit changes to
+the file. They can add a new file or directory by that name, delete it, or
+modify it.
+
+=item read-only
+
+Files marked as C<read-only> means that the user cannot commit changes to
+that file. The user is not allowed to create, delete, or modify this
+file.
+
+=item no-delete
+
+Files marked as C<no-delete> allow the user to modify and even create the
+file, but not delete the file. This is good for a file that needs to be
+modified, but you don't want to be removed.
+
+=item no-add
+
+Files marked as C<no-add> allow the user to modify the file if it already
+exists, and are allowed to delete a file if it already exists, but they
+are not allowed to add a new file to the repository. This is combined
+with the L<no-delete> option above to allow people to modify files, but
+not to add new files or delete old ones from the repository.
+
+=item add-only
+
+This is a special access permission that will allow a user to add, but not
+modify a file with that matching pattern or regex. This is mainly used to 
+ensure that tags may be created but not modified. For example, if you have
+a C</tags> directory, you can do this:
+
+    [FILE Users cannot modify any tags]
+    file = /tags/**
+    access = read-only
+    user = @ALL
+
+    [FILE Users can add tags to the tag directory]
+    file = /tags/*/
+    access = add-only
+    user = @ALL
+
+The first L<File> section removes the user's ability to make any changes in
+the C</tags> directory. The second L<File> section allows users to only add
+directories directly under the C</tags> directory. Thus, a user can do
+something like this:
+
+    $ svn cp svn://localhost/trunk svn://localhost/tags/V-1.3
+
+to tag version 1.3 of the source, but then can't modify, add, or delete any
+files under the C</tags/V-1.3> directory. Also, users cannot do something
+like this:
+
+    $ svn cp svn://localhost/trunk svn://localhost/tags/V-1.3/BOGUS
+
+because the ability to copy a directory is only allowed in the C</tags/>
+directory and no subdirectory.
+
+Nor, can a user do this:
+
+    $ touch tags/foo.txt
+    $ svn add tags/foo.txt
+    $ svn commit -m"Adding a file to the /tags directory"
+
+Since only directories can be added to the C</tags> directory.
+
+=back
+
+=item case
+
+This is an optional parameter and has two possible values: C<match>
+and C<ignore>. The default is C<match>. When set to C<ignore>, file name
+casing is ignored when attempting to match a file name against the name
+of the file that is being committed.
+
+    [file Bob can edit our batch files]
+    file = **/*.bat
+    access = read-write
+    users = bob
+    case = ignore
+
+This will match every Batch file with a suffix of I<*.bat> or I<*.BAT> or
+even I<*.Bat> and I<*.BaT>.
+
+=back
+
+=head3 Property
+
+This section allows you to set what properties and what those property
+values must be on a particular set of files. The section heading looks
+like this:
+
+    [property <purpose>]
+
+Where C<purpose> is the purpose of that property. This is used as an
+error message if a file fails to have a required property or that
+property is set to the wrong value. The following parameters are used:
+
+=over 7
+
+=item match
+
+A Perl style expanded regular expression matching the files that are
+affected by this property. Note this cannot be used with the C<file>
+parameter.
+
+=item file
+
+A glob type expression matching the files that are affected by this
+property. Note this cannot be used with the C<match> parameter.
+
+=item case
+
+An optional parameter and the only permitted value is I<ignore>. This
+means to ignore the case of file names (not property values! They're
+still case sensitive)
+
+=item property
+
+The name of the property that should be on this file. 
+
+=item value
+
+The value the property should have. Note that this can be either a
+string, a number of a regular expression that the value should match.
+This is determined by the I<type> parameter.
+
+=item type
+
+The type of value that the I<value> parameter actually contains. This
+can be C<string>, C<number>, or C<regex>.
+
+=back
+
+=head3 Revprop
+
+This section allows you to set what revision properties and what
+those property values must be when committing a revision.
+
+    [revprop <purpose>]
+
+Where C<purpose> is the purpose of that property. This is used as an
+error message if the revision fails to have a required revision property
+or that property is set to the wrong value.
+
+The Revision property of C<svn:log> is a special revision property
+that all Subversion clients and server versions can use. This is
+set by the C<-m> parameter in the C<svn commit> command. This can
+be used to verify that the commit log message is in the correct format.
+
+Here is an example:
+
+    [revprop Users must have at least 10 characters of a commit message]
+    property = svn:log
+    value = ^.{10,}
+    type = REGEX
+
+The above requires a user to create an at least 10 character commit
+message when committing a change. This will prevent a user from leaving
+a null message. You can get even more complex and imaginative:
+
+    [revprop Users must include a Jira ticket number with a commit, or NONE]
+    property = svn:log
+    value = ^(NONE)|(([A-Z]{3,4}-\d+(,\s+)?)+):.{10,}
+    type = REGEX
+
+Imagine you have a ticketing system where ticket numbers start with a three
+or four capital letter issue type, followed by a dash, followed by an
+issue number (much like Jira). The above will require a user to list
+one or more comma separated issue IDs, followed by a colon and a space. If
+there is no issue ID, the user can use the word "NONE". This has to
+be followed by at least a ten character description. The following
+would be valid commit comments:
+
+    NONE: Fixed the indentation of a few files.
+    FOO-123: Added a new format to match the specs
+    BAR-334, BAZ-349: Fixed the display bug
+
+While the following wouldn't be allowed:
+
+    Fixed stuff
+    AAAA
+    FOO-123: SSDd
+
+If both the client and server run a release of Subversion 1.5 or
+greater, you can use other revision properties on a commit.
+
+Revision properties are set with the C<--with-revprop> on the
+C<svn commit> command. Revision properties other than C<svn:log>
+can only be used when the Subversion client and server revisions
+are 1.5 or newer.
+
+B<WARNING:> Users with a Subversion client older than 1.5
+won't be allowed to commit changes if revision properties other
+than C<svn:log> are required.
+
+=over 7
+
+=item property
+
+The name of the revision property that should be set in this revision.
+
+=item value
+
+The value the revprop should have. Note that this can be either a
+string, a number of a regular expression that the value should match.
+This is determined by the I<type> parameter.
+
+=item type
+
+The type of value that the I<value> parameter actually contains. This
+can be C<string>, C<number>, or C<regex>.
+
+=back
+
+=head3 Ban
+
+    This section allows you to ban certain file names when you add a new
+    file. For example, in Unix, a file can be called C<aux.java>, but
+    such a name would be illegal in Windows. 
+
+    The section heading looks like this:
+
+    [ban <description>]
+
+    where E<lt>descriptionE<gt> is the description of that ban. This is
+    returned to the user when a banned name is detected.
+
+=over 7
+
+=item match
+
+A Perl style regular expression matching the banned names. Note this
+cannot be used with the C<file> parameter.
+
+=item file
+
+An Ant style globbing expression that matches the banned names. Note
+this cannot be used with the C<item> parameter.
+
+=item case
+
+This is an optional parameter. If set to I<ignore>, it will ignore the
+case in file names.
+
+=back
+
+=head3 Ldap
+
+One of the nice features of this pre-commit hook is that you can use
+your LDAP group names as valid groups for the purpose of this hook. If
+you are using Windows Active Directory for logins, you can use your
+Active Directory server as an LDAP server and your Windows group names
+become valid groups for this pre-commit hook.
+
+LDAP requires that the Perl Net::LDAP module be installed. This is an
+optional module that can be installed by CPAN. Unfortunately, this must
+be done by a system administrator, and the Subversion repository machine
+is usually under the control of the System Administration team and not
+the Configuration Manager.
+
+Fortunately this is an OPTIONAL module. As long as there is no LDAP
+section, this pre-commit hook will work without Net::LDAP being
+installed.
+
+The LDAP section header looks like this:
+
+    [ldap <ldapURI or server>]
+
+Where the name of the LDAP server (or full URI can be contained in the
+section name. You may include multiple servers.
+
+This allows you to use both the primary LDAP server and possible
+secondary servers that are used when the primary is down.
+
+=over 7
+
+=item base
+
+B<REQUIRED>: This is the base DN of the LDAP server. This is a required
+parameter, and will look something like this:
+
+    DC=vegicorp,DC=com
+
+I<DC> stands for I<Domain Component>.
+
+=item user_dn
+
+B<OPTIONAL BUT USUALLY REQUIRED>: This is the user's distinguished name
+to use to log into the LDAP server. If not given, anonymous access will
+be used. Most corporate sites will require some user. This will look
+something like:
+
+   DN=CM Admin Account,OU=Special Users,OU=users,DC=vegicorp,DC=com
+
+=item password
+
+B<OPTIONAL BUT USUALLY REQUIRED>: This is the password for the User DN
+in order to log into the LDAP server. If not given, the C<user_dn> will
+be used, but with no password.  If neither the C<password> or C<user_dn>
+are given, anonymous access will be tried.
+
+=item Username_attr
+
+B<OPTIONAL>: This is the name of the attribute that will contain the
+user's login name. If you setup your Apache HTTPD server to use LDAP
+(and you should), it should be the same attribute you specified there.
+
+This is an optional parameter. The default will be C<sAMAccountName>
+which is the default used by Active Directory. Others may be C<mail>,
+C<mailNickName>, C<cn> (which would be the full name of the user), and
+rarely C<sn> (which is the user's last name).
+
+=item Group_attr
+
+B<OPTIONAL> This is the attribute of the user's LDAP record that
+contains all of the groups they are a member of. The user will
+automatically be considered a member of all of these groups for the
+purpose of this hook.
+
+By default, this is C<memberOf> which is the default for Active
+Directory.
+
+=item Search_base
+
+B<OPTIONAL>: This is the base DN for searches. This parameter is
+optional, but could speed up the hook because there will be less of the
+LDAP tree to search for the particular user. Most LDAP sites are
+indexed, and a search for a particular user is usually fairly fast. If
+the hook seems slow, try to use the Search_base parameter. Its value
+will look something like this:
+
+   OU=users,DC=vegicorp,DC=com
+
+=item Timeout
+
+C<OPTIONAL>: This is the number of seconds to wait for a timeout if the LDAP server
+cannot be found. Timing out will cause the pre-commit hook to fail.
+However, it can speed up the time it takes for the hook to fail. The
+default is currently 5 seconds. Remember this is the maximum time. If
+the LDAP server can be found in a few miliseconds, it doesn't matter if
+this timeout value is 5 seconds or 100 seconds.
+
+Normally, this should be fine. 5 seconds isn't too long to wait, and if
+LDAP is working, it should respond before 5 seconds. However, you can
+adjust this value if you have a very slow network.
+
+=back 
+
+=head1 REQUIREMENTS
+
+=head2 Perl Version
+
+This program should work with Perl versions from 5.8.8 and up. It has
+been tested with Perl versions 5.8.8, 5.8.9, 5.10, 5.12, 5.14, and 5.18.
+
+=head2 Optional Modules
+
+This program does not require any optional modules. However, if you use
+LDAP groups, this program will require Net::LDAP to be installed. This
+module may be downloaded from the CPAN repository. 
+
+This module has been tested with Net::LDAP version 0.57.
+
+=head2 Perlbrew
+
+At most companies, the Subversion repository server is controlled by the
+System administration team and not the Configuration manager. This means
+that the Configuration Manager does not have the ability to install CPAN
+modules such as Net::LDAP and requires the cooperation of the System
+administration team.
+
+In rare circumstances, the system administration team will refuse to
+install I<optional> Perl modules because I<they're not standard>, and
+they I<have not been tested>. My first response would be to have these
+individuals garroted, lined up in front of a firing squad, shot, and
+then fired. Unfortunately, this doesn't help you get the needed Perl
+modules installed.
+
+Instead, you will have to conjole and beg. Explain to them that CPAN
+modules are tested and used on thousands of sites without any problems.
+Most of the time, it is just ignorance on the part of the SA team to
+know about Perl, or how CPAN works. Education is your friend.
+
+Another approach is to install a copy of Perl that is under your own
+control. You can do this with C<Perlbrew|http://perlbrew.pl>.
+
+Perlbrew allows you to install several non-root version of Perl, and to
+easily switch betweent them. I use it to switch between various Perl
+versions when I test my hooks and other Perl scripts.
+
+On Linux, Perlbrew requires the developer modules (such as the
+compiler) to be installed. On Mac OS X, Perlbrew requires that XCode be
+installed, and the various Unix command line utilities. Also make sure
+that your C<PATH> includes the Unix command line tools found in
+/Applications/Xcode.app/Contents/Developer/usr/bin.
+
+Your System Administrators may let you install Perlbrew just to get you
+out of their hair. However, do not break corporate policy by installing
+a clandestine copy of Perlbrew and using your own copy of Perl. This
+will get you fired (and I would fire you too). The Subversion repository
+is usually under tight control and under continous audit. Make sure you
+have permission before installing Perlbrew.
+
+=head1 AUTHOR
+
+David Weintraub
+L<mailto:david@weintraub.name>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2013 by David Weintraub. All rights reserved. This
+program is covered by the open source BMAB license.
+
+The BMAB (Buy me a beer) license allows you to use all code for whatever
+reason you want with these three caveats:
+
+=over 4
+
+=item 1.
+
+If you make any modifications in the code, please consider sending them
+to me, so I can put them into my code.
+
+=item 2.
+
+Give me attribution and credit on this program.
+
+=item 3.
+
+If you're in town, buy me a beer. Or, a cup of coffee which is what I'd
+prefer. Or, if you're feeling really spendthrify, you can buy me lunch.
+I promise to eat with my mouth closed and to use a napkin instead of my
+sleeves.
+
+=back
+
+=cut
+
+#
+########################################################################

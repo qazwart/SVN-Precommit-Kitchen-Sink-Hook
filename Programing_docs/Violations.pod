@@ -1,0 +1,59 @@
+=head1 NAME
+
+Violations
+
+=head1 SYNOPSIS
+
+    my $error = $section->Description;
+    my $policy = qq("You don't have access to ${change_type} the file "${file}");
+    my $violation = Violation->new ( $file, $error, $policy );
+
+=head1 DESCRIPTION
+
+This object tracks violations of policy when examining a control file to
+make sure that the committer has permissions to make the changes they're
+trying to make.
+
+=head1 CONSTRUCTOR
+
+=head2 new
+
+This creates a new violation object. It takes three parameters:
+
+=over 4
+
+=item * File (optional)
+
+The name of the file being committed that is in violation of the control
+file commit policy.
+
+=item * Error (optional)
+
+The error -- usually from the Section description.
+
+=item * Policy (optional)
+
+A more detailed description of why this is happening. For example, you
+could have something like:
+
+    File /trunk/sh/foo.sh" requires a property svn:eol-style to be set to the value "LF"
+
+which may be different from the seciton description
+
+   Shell scripts need the svn:eol-style property to be LF
+
+=back
+
+=head1 METHODS
+
+=head2 File
+
+Sets/Gets the file name which is being committed
+
+=head2 Policy
+
+A detailed explanation on what the violation entails.
+
+=head2 Error
+
+Usually the text from the Section Description.

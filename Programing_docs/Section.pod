@@ -1,0 +1,166 @@
+=head1 NAME
+
+Class Section
+
+=head1 SYNOPSIS
+
+    my $section = Section->new ( $type, $description );
+
+    $section->Control_file ( $control_file_name );
+    $section->Control_file_line ( $line_number );
+    $section->Description( $description );
+    $section->Parameter( $parameter, $value );
+
+    #
+    # Called only from subclass
+    #
+
+    $section->Verify_parameters( $ref_to_list_of_req_methods );
+
+=head1 DESCRIPTION
+
+This class works with a Control file that is specified as an INI flie.
+Section headings is the Section heading in a INI file which is a line
+inside square braces. The first word in the brace is the Section Type
+and the rest is a description of that section.
+
+This class doesn't actually, create objects of class I<Section>.
+Instead, it uses the C<$type> parameter to create a sub-class of that
+Section type. All methods are actually super methods used by the
+sub-class.
+
+As with all modern Perl modules. If a call to a method or class fails,
+the program will I<croak>. This means you must wrap your constructor and
+method calls in C<eval> statements in order for your program to coninue
+executing.
+
+=head1 CONSTRUCTORS
+
+=head2 new
+
+    my $section = Section->new ( $type, $description);
+
+use constant {
+    FILE_IN_REPO	=> "R",
+    FILE_ON_SERVER	=> "F",
+};
+
+sub new {
+sub Description {
+sub Control_file {
+sub Control_file_line {
+sub Parameter {
+sub Verify_parameters {
+This will create a new object of the specified subclass. This will not
+create a class C<Section>
+
+The new constructor will I<croak> if the constructor fails. You need to
+catch this with an C<eval> statement.
+
+There are two parameters:
+
+=over 4
+
+=item * Type (Required)
+
+This is the subclass that you are creating. This field is case
+insensitive.
+
+The valid types are:
+
+=over 4
+
+=item * Group (Section::Group)
+
+=item * File (Section::File)
+
+=item * Property (Section::Property)
+
+=item * Revprop (Section::Revprop)
+
+=item * Ban (Section::Ban)
+
+=item * LDAP (Section::Ldap)
+
+=back
+
+=item * Description (Optional)
+
+This is the description of the section. This can be changed with the
+L<Description> method below.
+    my $section
+
+=back
+
+
+=head1 METHODS
+
+B<NOTE>: As with all modern Perl modules, your program will I<croak> on
+failure rather than return an C<undef> or zero value. It is your
+responsibilty to use C<eval> wrappers to catch these I<exceptions> and
+then to handle them.
+
+Note that all of these methods are really called by the subclass 
+
+=head2 Description
+
+    $section->Description( $description );
+
+This method will either set or get the previous set description.
+
+=head2 Control_file
+
+This method will either set the name of the control file where this
+section definition was found, or get the previous name of the control
+file.
+
+This is mainly used for error processing, so you can show where the
+error is in a section definition.
+
+=head2 Control_file_line
+
+This method will either set the line number of the control file where
+the Section was first defined.
+
+=head2 Parameter
+
+Sets the value for this particular parameter. This does not get values,
+but only sets then for that particular parameter. To get the value, you
+must use the method for that parameter.
+
+Parameters:
+
+=over 4
+
+=item * Parameter (required)
+
+This is the name of the parameter you're setting for the Section
+subclass object. Each subclass has its own list of valid parameter
+types, and when this method is called by that subclass object, this
+method will perform a C<$obj->can($parameter)> to verify this is a valid
+parameter. If not, this method will cause the program to I<croak>.
+
+=item * Value (required)
+
+This is the value of that parameter. 
+
+=back
+
+=head2 Verify_parameters
+
+This is used to verify that all required parameters for that particualr
+section subclass object have been set. This subroutine is never called
+directly. Instead, each subclass has its own C<Verify_parameters>
+subroutine, and this is used by those subclass objects.
+
+Parameters:
+
+=over 4
+
+=item * List Reference of all required parameters (Required)
+
+This method will go through this list and verify that these parameters
+have been set. This method will cause your program to C<croak> if a
+particular required parameter is not set.
+
+=back

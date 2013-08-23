@@ -1,0 +1,87 @@
+=head1 NAME
+
+Class  Section::Ldap
+
+=head1 SYNOPSIS
+
+    my $section = Section->new( "ldap", $description );
+
+    $section->Parameter ( $parameter, $value );
+    $section->Verify_parameters;
+    $section->Ldap;
+
+=head1 DESCRIPTION
+
+This subclass track what properties are required and for what files. If
+someone attempts to commit a change without the correct property and
+value the commit wil be rejected.
+
+This class is a subclass of C<Section> and inherits the C<Parameter> method
+from that class.
+
+=head1 CONSTRUCTOR
+
+There is no constructor in this class. Instead, you create a class type
+of C<Section> with the first parameter as I<ban>:
+
+    my $ldap = Section->new( "ldap", $description );
+
+See the constructor documentation in the C<Section> documentation.
+
+=head1 METHODS
+
+=head2 Description
+
+Sets/Gets the decription. The description consists of one or more LDAP
+server URLs. Multiple LDAP server URLs are allowed.
+
+=head2 Username_attr
+
+Sets/gets the LDAP attribute that will be used for the user name. This
+is by default C<sAMAccountName>.
+
+=head2 Group_attr
+
+Sets/gets the attribute that contains the group membership information.
+The default is C<memberOf>
+
+=head2 Base
+
+Sets/gets the LDAP Base DN.
+
+=head2 User_dn
+
+Sets/gets the LDAP User DN. If not set, Binding to the LDAP server will
+be done anonymously.
+
+=head2 Password
+
+Sets/gets the password for the DLAP User DN in order to bind to the LDAP
+server.
+
+=head2 Search_base
+
+Sets/gets the DN of the search base in the LDAP tree. If not set, will
+search the entire tree. 
+
+=head2 Timeout
+
+Sets/gets the Timeout for contacting the LDAP server. If not set, the
+default of five seconds will be used.
+
+=head2 Ldap_groups
+
+Retrieves all the LDAP groups the user belongs to. This will bind to the
+LDAP server and do a search and fetch all groups that this user belongs
+to.
+
+=head2 Ldap
+
+Retrieves the list of LDAP servers in either an array or an array
+reference. This method gets its list from the L<Description> method, and
+this method is used by the L<Ldap_groups> method.
+
+=head2 Verify_parameters
+
+Verifies that all required parameters have been set, and all set
+parameters are valid.

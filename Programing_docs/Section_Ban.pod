@@ -1,0 +1,85 @@
+=head1 NAME
+
+Class  Section::Ban
+
+=head1 SYNOPSIS
+
+    my $section = Section->new( "ban", $description );
+
+    $section->File( $glob );
+    my $regex = $section->Match;
+    my $section->Parameter ( $parameter, $value );
+    $section->Verify_parameters;
+
+=head1 DESCRIPTION
+
+This subclass tracks what file names are banned from the Subversion
+repository. If some attempts to add a file name that matches the regular
+expression, the pre-commit hook will refuse the change.
+
+This class is a subclass of C<Section> and inherits the C<Parameter> method
+from that class.
+
+=head1 CONSTRUCTOR
+
+There is no constructor in this class. Instead, you create a class type
+of C<Section> with the first parameter as I<ban>:
+
+    $my ban = Section->new( "ban", $description );
+
+See the constructor documentation in the C<Section> documentation.
+
+=head1 METHODS
+
+=head2 File
+
+This method converts the glob pattern of the file name to ban, converts
+it into a regular expression, and then calls the Match method to set it.
+This method cannot retreive the value of the glob expression. Calling it
+to retrieve a glob expression will cause your program to C<croak>.
+
+Parameters:
+
+=over 4
+
+=item * Glob expression
+
+This is the glob expression of the files you want to ban. Glob names are
+anchored at the beginning and end, so you must take that into account
+when you use a glob expression:
+
+Wrong:
+
+    $ban->File( "*.java" );
+
+Right:
+
+    $ban->File( "**/*.java" );
+
+=back
+
+=head2 Match
+
+Sets and gets the regular expression that matches the file name you want
+to ban.
+
+=head2 Case
+
+Sets and gets whether or not the matching regular expression is case
+sensitive or not. The two possible values  are:
+
+=over 4
+
+=item * Ignore
+
+=item * Match
+
+=back
+
+If this is not set, it is assumed that character case is important in
+the name of the file.
+
+=head2 Verify_parameters
+
+Verifies that all required parameters have been set, and all set
+parameters are valid.

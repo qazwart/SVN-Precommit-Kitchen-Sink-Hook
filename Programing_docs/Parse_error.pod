@@ -1,0 +1,78 @@
+=head1 NAME
+
+Parse_error
+
+=head1 SYNOPSIS
+
+    my $error = Parse_error->new( $error, $control_file, $line_number );
+    warn $error->Get_error "\n";
+
+=head1 DESCRIPTION
+
+Tracks errors when parsing the control files.
+
+=head1 CONSTRUCTORS
+
+=head2 new
+
+This creates a new error object which contains the control file object
+(which contains the control file information including the control file
+lines), the line number where the error occurred, and a description of
+the error itself.
+
+Parameters:
+
+=over 4
+
+=item * Description (Optional)
+
+A user friendly description of the error
+
+=item * Control File object (Optional)
+
+The control file object where the parsing error was located
+
+=item * Line Number in Control File (Optional)
+
+The line number of that error in the control file.
+
+B<NOTE>: Although these parameters are optional, they are required when
+retrieving the error message. Making these optional merely allows the
+developer to call the constructor, then set these parameters with their
+various methods.
+
+=back
+
+=head1 METHODS
+
+=head2 Description
+
+Sets/Gets a user friendly description of the error
+
+=head2 Control_file
+
+Sets/Gets the control file object where the parsing error was located.
+
+=head2 Line_number
+
+Sets/Gets the line number in the control file where the parsing error
+was located. This must be an integer. Setting this to a non-integer
+value will cause the program to I<croak>.
+
+=head2 Get_error 
+
+This method returns a multilined text string with the descption line
+number and the section of the control file pointing to the line where
+the error has occurred. This method requires that a Control file has
+been set, as well as a line number and the description of the error
+itself.
+
+This will return a string that looks something like this:
+
+    ERROR: In parsing Control File: "control.ini" (F) Line # 56
+           Invalid parameter "dip".
+	   [File Makefiles can only be edited by a senior developer]
+	   file = **/Makefile
+	   case = Ignore
+	-> dip	= three bean dip
+	   users = @senior_developers

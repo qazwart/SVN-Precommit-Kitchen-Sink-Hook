@@ -1,0 +1,57 @@
+=head1 NAME
+
+Configuration
+
+=head1 Synopsis
+
+    my $config = Configuration->new;
+    $config->Author( $author );
+    my $user = $config->Author;		# Normalized
+    my $ldap_cn = $config->Ldap_user;	# Original '$author'
+
+=head1 Description
+
+Saves the configuration information of the pre-commit hook.
+
+=head1 CONSTRUCTORS
+
+=head2 new
+
+Creates a condigurtion object.
+
+=head1 METHODS
+
+=head2 Author
+
+Sets/Gets the Author as stated in the C<svnlook author> command. This
+command returns a I<Normalize> name of the user. The name is lowercased
+and underscores replace spaces. This is what is used in the F<User>
+sections under the F<Group> and F<File> sections of the control file.
+
+=head2 Ldap_user
+
+Gets the LDAP user. Trying to set the LDAP user with this will cause
+your program to I<croak>. This value is set by the L<Author> method.
+You can use this method to set the value of the LDAP user's name, but it
+is only used internally.
+
+=head2 Set_author
+
+This method runs the C<svnlook author> command to find the author, then
+sets the name via the L<Author> and L<Ldap_user> method. It is
+recommended to call this method to set the Author and not use the other
+methods.
+
+=head2 Repository
+
+Sets/Gets the location of the Subversion repository directory. This is
+passed in as the first parameter to the hook.
+
+=head2 Rev_param
+
+Sets/Gets the revision parameter. The parameter must start with either a
+C<-r> or C<-t> or else, this will cause your program to I<croak>.
+
+=head2 Svnlook
+
+Sets/Gets the location of the C<svnlook> command.

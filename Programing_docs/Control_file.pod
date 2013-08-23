@@ -1,0 +1,100 @@
+=head1 NAME
+
+Control_file
+
+=head1 SYNOPSIS
+
+    my $control_file = new->Control_file( $type, $location, $configuration );
+    my @content = $control_file->Content;
+
+=head1 DESCRIPTION
+
+This package stores information about a control file and captures its
+content. This object is stored in the Section object in order for a
+section to keep track where it is defined for error reporting purposes.
+
+=head1 CONSTRUCTOR
+
+=head2 new
+
+The new constructor gathers the information about the Control file and
+stores the contents. There are two types of control files: Files stored
+in the Subversion repository as versioned files themselves, and as files
+stored on the server.
+
+Storing a control file in the Subversion source repository has the
+advantage that the control file can be modified without having access to
+the server. However, it also means that it is visible to anyone with
+access to the repository.
+
+Storing the control file as a plain text file on the server makes it
+more secure, but also means it is harder to access.
+
+It is recommended to store LDAP information on the server since it
+usually includes a user account and login while the rest of the control
+file can be stored on the server.
+
+Of course, you can control commit access to the control file with the
+control file itself. 
+
+The L<new> constructor takes the following parameters:
+
+=over 4
+
+=item * type (Required)
+
+This is the repository type. It can be one of two values:
+
+=over 4
+
+=item * R
+
+This is a control file stored in the I<Repository> as a versioned source
+file.
+
+=item * F
+
+This is a control file stored on the Subversion repository server itself
+as a plain text file.
+
+=back
+
+=item * location (Required)
+
+This is the location of the control file whether as a file on the server
+or as a versioned source file in the repository.
+
+=item * configuration (Required if type = C<R>)
+
+This is the contents of the control file. Blank lines and comments are
+stored as normalized null lines. This way, the line number in the
+control file remains the same, but you can easily filter out these lines
+while processing with:
+
+    next if not $line;
+
+This is used to help parse the control file into F<Section> object, and
+to help with error messsages (where an error message can pinpoint the
+problem when parsing the control file itself).
+
+=back 
+
+=head1 METHODS
+
+=head2 Location
+
+Retrieves the location of the control file. This could either be the
+path in the repository or the physical location on the file server. To
+know which, you need to retrieve the control file type with the L<Type>
+method.
+
+=head2 Type
+
+Retreives the type of control file that is stored. This is either C<R>
+or C<F> as explained above in the L<new> constructor.
+
+=head2 Content
+
+Retreives the normalized content of the control file. Comments and blank
+lines are set as null lines. This can either return an array or an array
+reference depending upon the context.

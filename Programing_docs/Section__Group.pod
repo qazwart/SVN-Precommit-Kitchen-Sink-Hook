@@ -1,0 +1,45 @@
+=head1 NAME
+
+Class  Section::Group
+
+=head1 SYNOPSIS
+
+    my $section = Section->new( "group", $description );
+    $section->Users( $user_list );
+
+    $section->Verify_parameters;
+
+=head1 DESCRIPTION
+
+This subclass tracks what file names are banned from the Subversion
+repository. If some attempts to add a file name that matches the regular
+expression, the pre-commit hook will refuse the change.
+
+This class is a subclass of C<Section> and inherits the C<Parameter> method
+from that class.
+
+=head1 CONSTRUCTOR
+
+There is no constructor in this class. Instead, you create a class type
+of C<Section> with the first parameter as I<ban>:
+
+    my $group = Section->new( "group", $description );
+
+See the constructor documentation in the C<Section> documentation.
+
+The name of the group is taken from the I<Description> of the Group
+section header.
+
+=head1 METHODS
+
+=head2 Users
+
+Sets and gets a list of users. Setting is done via a string of
+users that are comma or space separated. A list of users ( or a
+reference to a list ) is retreived.
+
+
+=head2 Verify_parameters
+
+Verifies that all required parameters have been set, and all set
+parameters are valid.

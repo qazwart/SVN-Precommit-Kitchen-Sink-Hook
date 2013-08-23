@@ -1,0 +1,66 @@
+=head1 NAME
+
+Class  Section::Property
+
+=head1 SYNOPSIS
+
+    my $section = Section->new( "revprop", $description );
+
+    $section->File( $glob );
+    my $regex = $section->Match;
+    $section->Parameter ( $parameter, $value );
+    $section->Verify_parameters;
+
+=head1 DESCRIPTION
+
+This subclass track what properties are required and for what files. If
+someone attempts to commit a change without the correct property and
+value the commit wil be rejected.
+
+This class is a subclass of C<Section> and inherits the C<Parameter> method
+from that class.
+
+=head1 CONSTRUCTOR
+
+There is no constructor in this class. Instead, you create a class type
+of C<Section> with the first parameter as I<ban>:
+
+    my $revprop = Section->new( "revprop", $description );
+
+See the constructor documentation in the C<Section> documentation.
+
+=head1 METHODS
+
+=head2 Property
+
+Sets/Gets the property that needs to be set on the file.
+
+=head2 Value
+
+Sets/Gets the value of that property.
+
+=head2 Type
+
+Sets/Gets the type of match expected between the property and the value.
+The valid values are:
+
+=over 4
+
+=item * string
+
+The property value  must equal the value of the string value.
+
+=item * number
+
+The property value must equal the value of the numeric value.
+
+=item * regex
+
+The property value must match the regular expression
+
+=back
+
+=head2 Verify_parameters
+
+Verifies that all required parameters have been set, and all set
+parameters are valid.

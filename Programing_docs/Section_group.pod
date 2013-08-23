@@ -1,0 +1,79 @@
+=head1 NAME
+
+Section_group
+
+=head1 SYNOPSIS
+
+    my $sections = Section_group->new;
+    $section->Add ( $section );
+
+    my @ldap_sections = $section->Ldap;
+
+=head1 DESCRIPTION
+
+An object used by the hook to gather the various sections type objects
+into a single object structure.
+
+Section objects are parsed in order from the top of the control file to
+the bottom. Order is B<very important> and must be kept. This object
+tracks the order of the various section objects, and returns the various
+arrays of a particular section type when requested.
+
+=head1 CONSTRUCTOR
+
+=head2 new
+
+Creates a new C<Section_group> object. Takes no parameters.
+
+=head1 METHODS
+
+=head2 Add
+
+Adds a C<Section object> to the Section group object. This must be a
+valid subclass of type C<Section>. Program will I<croak> if an invalid
+Section object is passed.
+
+=head2 Sections
+
+Retrieves a list of the various Section_group methods below. It is
+mainly used when you've finished parsing the control files and want to
+verify your various parameters for each of the Secion objects that were
+created. You can use this to go through all of your Section objec
+subclasses.
+
+    my @missing_params;
+    for my $method ( $sections->Sections ) {
+	for my $section ( $sections->$method ) {
+	    eval { $section->Verify_parameters; };
+	    if ($@) {
+		my $control_file = $section->Control_file;
+		my $line_number = $section->Control_file_line;
+		( my $error = $@) =~ s/ at .*$//;
+		push @parse_errors, Parse_error->new( $error, $control_file, $line_number);
+	    }
+	}
+    }
+
+=head2 Group
+
+Retrieves an array or array reference of C<Section::Group> objects.
+
+=head2 File
+
+Retrieves an array or array reference of C<Section::File> objects.
+
+=head2 Property
+
+Retrieves an array or array reference of C<Section::Property> objects.
+
+=head2 Revprop
+
+Retrieves an array or array reference of C<Section::Revprop> objects.
+
+=head2 Ban
+
+Retrieves an array or array reference of C<Section::Ban> objects.
+
+=head2 Ldap
+
+Retrieves an array or array reference of C<Section::Ldap> objects.
