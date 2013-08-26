@@ -22,7 +22,7 @@ use constant {
     #
     ADDED		=> 'A',
     DELETED		=> 'D',
-    MODIFIED		=> 'M',
+    MODIFIED		=> 'U',
 };
 
 use constant { 		#Control File Type (package Control)
@@ -133,7 +133,6 @@ my $purged_file_rules_ref = purge_file_rules (
     $configuration->Author,
     \@authors_groups,
 );
-
 
 #
 # Go through all files in the commit and look for file permissions,
@@ -515,19 +514,20 @@ sub check_file {
     my $change_type	= shift;
 
     my %change_desc = (
-	A => "add",
-	D => "delete",
-	M => "modify",
+	A  => "add",
+	D  => "delete",
+	U  => "modify",
+	UU => "modify",
+	_U => "modify property",
     );
 
     my @violations;
-    my $description;		#Need last description
+    my $description;		#Need last not permitted description
     my $permitted = 1;		#Assume user has permission to do this
     for my $file_rule ( @{ $file_rules_ref } ) {
 	my $regex = $file_rule->Match;
 	my $access = $file_rule->Access;
 	my $case = $file_rule->Case;
-	$description = $file_rule->Description;
 
 	if ( $case eq "ignore" ? $file_name =~ /$regex/i : $file_name =~ /$regex/ ) {
 	    if    ( $access eq "read-write" ) {
@@ -535,21 +535,25 @@ sub check_file {
 	    }
 	    elsif ( $access eq "read-only" ) {
 		$permitted = 0;
+		$description = $file_rule->Description;
 	    }
 	    elsif ( $access eq "add-only" ) {
 		$permitted =  $change_type eq ADDED ? 1 : 0;
+		$description = $file_rule->Description if not $permitted;
 	    }
 	    elsif ( $access eq "no-add" ) {
 		$permitted = $change_type ne ADDED ? 1 : 0;
+		$description = $file_rule->Description if not $permitted;
 	    }
 	    elsif ( $access eq "no-delete" ) {
 		$permitted = $change_type ne DELETED ? 1 : 0;
+		$description = $file_rule->Description if not $permitted;
 	    }
 	}
     }
     if ( not $permitted ) {
 	my $violation = Violation->new( $file_name, $description );
-	$violation->Policy( "You don't have access to $change_desc{$change_type} file_name." );
+	$violation->Policy( qq(You don't have access to $change_desc{$change_type} $file_name.) );
 	return $violation;
     }
     else {
@@ -592,14 +596,17 @@ sub check_properties {
 	$file,
     );
 
-    while ( my $property = qx($command) ) { #Fetch the property for that file
-	chomp $property;
+    my @properties = qx($command);
+    chomp @properties;
+    while ( my $property = <@properties> ) { #Fetch the property for that file
+	next if $property eq "";
 	my $command = join ( " ",
 	    $configuration->Svnlook,
 	    SVNLOOK_PROPGET,
 	    $configuration->Rev_param,
 	    $configuration->Repository,
 	    $property,
+	    $file,
 	);
 	chomp ( $properties{$property} = qx($command) );
     }
@@ -1654,6 +1661,7 @@ sub Ldap_groups {
 	no warnings qw(uninitialized);
 	croak qq(Could not "bind" to LDAP server.) 
 	. qq( User DN: "$user_dn" Password: "$password");
+	use warnings qw(uninitialized);
     }
 
     #
@@ -1864,8 +1872,8 @@ sub Sections {
     my $self		= shift;
 
     my @sections;
-    for my $symbol ( %key %Section_group ) {
-	next if $symbol ne lcfirst lc $symbol	# My methods have a particular syntax
+    for my $symbol ( keys %Section_group:: ) {
+	next if $symbol ne ucfirst lc $symbol;	# My methods have a particular syntax
 	next if $symbol eq "new";	# This is a constructor
 	next if $symbol eq "Add";	# Not interested in this method
 	next if $symbol eq "Sections";	# This is it's own method
