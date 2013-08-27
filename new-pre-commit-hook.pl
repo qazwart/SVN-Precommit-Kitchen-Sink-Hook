@@ -25,12 +25,12 @@ use constant {
     MODIFIED		=> 'U',
 };
 
-use constant { 		#Control File Type (package Control)
+use constant { 		# Control File Type (package Control)
     FILE_IN_REPO	=> "R",
     FILE_ON_SERVER	=> "F",
 };
 
-use constant {		#Revision file Type (package Configuration)
+use constant {		# Revision file Type (package Configuration)
     TRANSACTION 	=> "T",
     REVISION		=> "R",
 };
@@ -44,14 +44,14 @@ $parameters{file}		= SVN_REPO_DEFAULT;
 
 GetOptions (
     \%parameters,
-    'svnlook=s',		#Location of 'svnlook' command
-    'file=s',			#Location of control file on server
-    'filelocations=s@',		#Location of control files in repository
-    't=s',			#Repository Transaction 
-    'r=i',			#Repository Revision Number
-    'parse',			#Only parse control file for errors
-    'help',			#Display command line help
-    'documentation',		#Display the entire Documentation
+    'svnlook=s',		# Location of 'svnlook' command
+    'file=s',			# Location of control file on server
+    'filelocations=s@',		# Location of control files in repository
+    't=s',			# Repository Transaction 
+    'r=i',			# Repository Revision Number
+    'parse',			# Only parse control file for errors
+    'help',			# Display command line help
+    'documentation',		# Display the entire Documentation
 ) or pod2usage ( -message => "Invalid parameters passed" );
 $parameters{svn_repo} = shift;
 my $configuration = Configuration->new;
@@ -161,7 +161,7 @@ while ( my $line = <$cmd_fh> ) {
     chomp $line;
     $line =~ /\s*(\w)\s+(.*)/;
     my $change_type = $1;
-    my $file = "/$2";	#Prepend "/" for root
+    my $file = "/$2";	# Prepend "/" for root
     push @violations, check_file( $purged_file_rules_ref, $file, $change_type );
     if ( $change_type eq ADDED ) {
 	my $ban_rules_ref = $sections->Ban;
@@ -174,7 +174,7 @@ while ( my $line = <$cmd_fh> ) {
 	    $file,
 	    $configuration);
     }
-    if ( $control_files_index{$file} ) {  #This is a control file. Parse
+    if ( $control_files_index{$file} ) {  # This is a control file. Parse
 	push @violations, check_control_file_for_errors($file, $configuration);
     }
 }
@@ -204,7 +204,7 @@ if ( @violations ) {
     }
     exit 2;
 }
-else { #There are no violations. Allow commit
+else {		# There are no violations. Allow commit
     exit 0;
 }
 #
@@ -225,7 +225,7 @@ else { #There are no violations. Allow commit
 #     			errors. If empty, there are no errors.
 #
 sub check_options {
-    my $configuration	= shift;	#Configuration Object
+    my $configuration	= shift;	# Configuration Object
     my %parameters 	= %{ shift() };
 
     #
@@ -311,27 +311,27 @@ sub parse_control_files {
     my $sections		= shift;
     my $control_file_list_ref	= shift;
 
-    my @parse_errors;		#All errors found
+    my @parse_errors;		# All errors found
 
     for my $control_file ( @{ $control_file_list_ref } ) {
-	my $section;		#Section object: defined when section header is read
-	my $section_error;	#Does the section header have an error?
-	my $line_number = 0;	#Track line numbers in control files for errors
+	my $section;		# Section object: defined when section header is read
+	my $section_error;	# Does the section header have an error?
+	my $line_number = 0;	# Track line numbers in control files for errors
 	for my $line ( $control_file->Content ) {
 	    $line_number++;
-	    next unless $line;	#Ignore blank lines
+	    next unless $line;	# Ignore blank lines
 	    if ( $line =~ SECTION_HEADER ) {
 		my $section_type = $1;
 		my $description  = $2;
 		eval { $section = Section->new( $section_type, $description ); };
 		if ( $@ ) {
-		    $section_error = 1;	#Bad Section header, skip to next section
+		    $section_error = 1;	# Bad Section header, skip to next section
 		    my $error = qq(Invalid Section Type "$section_type");
 		    push @parse_errors,
 			Parse_error->new($error, $control_file, $line_number);
 		}
 		else {
-		    $section_error = 0;	#Section Header is good
+		    $section_error = 0;	# Section Header is good
 		    $sections->Add($section);
 		    $section->Control_file_line($line_number);
 		    $section->Control_file($control_file);
@@ -349,7 +349,7 @@ sub parse_control_files {
 		    }
 		}
 	    }
-	    else { #Invalid Line
+	    else {	# Invalid Line
 		my $error = qq(Invalid Line in "$line");
 		push @parse_errors,
 	    	    Parse_error->new($error, $control_file, $line_number);
@@ -413,7 +413,7 @@ sub find_groups {
 	die qq(Must pass object of Section_group class);
     }
 
-    my @authors_groups = qw(all);	#Everyone is a member of "ALL"
+    my @authors_groups = qw(all);	# Everyone is a member of "ALL"
     my %authors_group_index;
     #
     # LDAP Groups User Is In
@@ -430,12 +430,12 @@ sub find_groups {
     for my $group ( $sections->Group ) {
 	my $group_name = lc $group->Description;
 	for my $user ( $group->Users ) {
-	    if ( $user eq $configuration->Author ) { #Author is in this group
+	    if ( $user eq $configuration->Author ) {	# Author is in this group
 		push @authors_groups, $group_name;
 		$authors_group_index{$group_name} = 1;
 		next GROUP;
 	    }
-	    if ( $user =~ s/^\@(.+)/$1/ ) { #This is a group and not a user
+	    if ( $user =~ s/^\@(.+)/$1/ ) {		# This is a group and not a user
 		#
 		# See if Author is a member of this group
 		#
@@ -490,19 +490,19 @@ sub purge_file_rules {
 	    $file_rule->Match($regex);
 	}
 	for my $user ( $file_rule->Users ) {
-	    if ( $user =~ /^\@(.*)/ ) { 	#This is a group
+	    if ( $user =~ /^\@(.*)/ ) { 	# This is a group
 		my $group = $1;
 		if ( $authors_groups_index{$group} ) {
 		    push @purged_file_rules, $file_rule;
 		}
 	    }
-	    else {				#This is a user. Is this the author?
+	    else {				# This is a user. Is this the author?
 		if ( $author eq $user ) {
 		    push @purged_file_rules, $file_rule;
 		}
 	    }
-	} 	#for my $user ( $file_rule->Users )
-    }	#for my $file_rule ( @{ $file_rules_ref } )
+	} 	# for my $user ( $file_rule->Users )
+    }	# for my $file_rule ( @{ $file_rules_ref } )
     return wantarray ? @purged_file_rules: \@purged_file_rules;
 }
 #
@@ -522,8 +522,8 @@ sub check_file {
     );
 
     my @violations;
-    my $description;		#Need last not permitted description
-    my $permitted = 1;		#Assume user has permission to do this
+    my $description;		# Need last not permitted description
+    my $permitted = 1;		# Assume user has permission to do this
     for my $file_rule ( @{ $file_rules_ref } ) {
 	my $regex = $file_rule->Match;
 	my $access = $file_rule->Access;
@@ -574,7 +574,7 @@ sub check_bans {
 	    return $violation;
 	}
     }
-    return;	#Not banned
+    return;	# Not banned
 }
 
 sub check_properties {
@@ -588,7 +588,7 @@ sub check_properties {
     #
     # Fetch all current properties and their values for this file
     #
-    my $command = join ( " ",	#Find what properties the file has
+    my $command = join ( " ",	# Find what properties the file has
 	$configuration->Svnlook,
 	SVNLOOK_PROPLIST,
 	$configuration->Rev_param,
@@ -598,7 +598,7 @@ sub check_properties {
 
     my @properties = qx($command);
     chomp @properties;
-    while ( my $property = <@properties> ) { #Fetch the property for that file
+    while ( my $property = <@properties> ) {	# Fetch the property for that file
 	next if $property eq "";
 	my $command = join ( " ",
 	    $configuration->Svnlook,
@@ -626,7 +626,7 @@ sub check_properties {
 	# Matching Prop_rule found: See if the file has that property
 	#
 	my $property = $prop_rule->Property;
-	if ( not exists $properties{$property} ) { #Missing property
+	if ( not exists $properties{$property} ) {	# Missing property
 	    my $violation = Violation->new( $file, $prop_rule->Description );
 	    $violation->Policy( qq(Missing property "$property" on "$file") );
 	    push @violations, $violation;
@@ -636,7 +636,7 @@ sub check_properties {
 	#
 	# File has that property: See if the value matches what it should be
 	#
-	else {    #Property exists: See if it matches
+	else {	# Property exists: See if it matches
 	    my $prop_value = $prop_rule->Value;
 	    if    ( $prop_rule->Type eq "string"
 		    and $properties{$property} ne $prop_value ) {
@@ -660,13 +660,7 @@ sub check_properties {
 		push @violations, $violation;
 		next PROP_RULE;
 	    }
-	    else {	# Invalid type: Cannot check rule
-		my $violation = Violation->new( $file, $prop_rule->Description );
-		$violation->Policy( qq(Bad property type on "$property" in control file) );
-		push @violations, $violation;
-		next PROP_RULE;
-	    }
-	}	#NEXT PROP_RULE
+	}	# NEXT PROP_RULE
 
     } 
     return @violations;
@@ -682,7 +676,7 @@ sub check_revision_properties {
     #
     # Fetch all current properties and their values for this file
     #
-    my $command = join ( " ",	#Find what properties the file has
+    my $command = join ( " ",	# Find what properties the file has
 	$configuration->Svnlook,
 	SVNLOOK_PROPLIST,
 	"--revprop",
@@ -711,7 +705,7 @@ sub check_revision_properties {
     PROP_RULE:
     for my $prop_rule ( @{ $prop_rules_ref } ) {
 	my $property = $prop_rule->Property;
-	if ( not exists $properties{$property} ) { #Missing property
+	if ( not exists $properties{$property} ) {	# Missing property
 	    my $violation = Violation->new( "", $prop_rule->Description );
 	    $violation->Policy( qq(Missing revision property "$property" on commit) );
 	    push @violations, $violation;
@@ -721,7 +715,7 @@ sub check_revision_properties {
 	#
 	# File has that property: See if the value matches what it should be
 	#
-	else {    #Property exists: See if it matches
+	else {	# Property exists: See if it matches
 	    my $prop_value = $prop_rule->Value;
 	    if    ( $prop_rule->Type eq "string"
 		    and $properties{$property} ne $prop_value ) {
@@ -734,7 +728,7 @@ sub check_revision_properties {
 	    elsif ( $prop_rule->Type eq "number"
 		    and $properties{$property} != $prop_value ) {
 		my $violation = Violation->new( "", $prop_rule->Description );
-		$violation->Politcy( qq(Revision property "$property" did not equal "$prop_value") );
+		$violation->Policy( qq(Revision property "$property" did not equal "$prop_value") );
 		push @violations, $violation;
 		next PROP_RULE;
 	    }
@@ -745,13 +739,7 @@ sub check_revision_properties {
 		push @violations, $violation;
 		next PROP_RULE;
 	    }
-	    else {	# Invalid type: Cannot check rule
-		my $violation = Violation->new( "", $prop_rule->Description );
-		$violation->Policy( qq(Bad revision property type on "$property" in control file) );
-		push @violations, $violation;
-		next PROP_RULE;
-	    }
-	}	#NEXT PROP_RULE
+	}	# NEXT PROP_RULE
 
     } 
     return @violations;
@@ -807,8 +795,8 @@ sub Author {
     my $author		= shift;
 
     if ( defined $author ) {
-	$self->Ldap_user($author);	#Preserved with spaces and case;
-	$author =~ s/\s+/_/g;		#Replace whitespace with underscores
+	$self->Ldap_user($author);	# Preserved with spaces and case;
+	$author =~ s/\s+/_/g;		# Replace whitespace with underscores
 	$self->{AUTHOR} = lc $author;
     }
     return $self->{AUTHOR};
@@ -859,7 +847,7 @@ sub Repository {
     my $repository	= shift;
 
     if ( defined $repository ) {
-	$repository =~ s{\\}{/}g;	#Change from Windows to Unix file separators
+	$repository =~ s{\\}{/}g;	# Change from Windows to Unix file separators
 	$self->{REPOSITORY} = $repository;
     }
 
@@ -914,7 +902,7 @@ sub new {
     my $class		= shift;
     my $type		= shift;
     my $location	= shift;
-    my $configuration	= shift;	#Needed if file is in repository
+    my $configuration	= shift;	# Needed if file is in repository
 
     if ( not defined $type ) {
 	croak qq/Must pass in control file type ("R" = in repository. "F" = File on Server")/;
@@ -997,8 +985,8 @@ sub Content {
     if ( defined $contents_ref ) {
 	my @contents;
 	for my $line ( @{$contents_ref} ) {
-	    $line =~ s/^\s*$//;		#Make blank lines empty
-	    $line =~ s/^\s*[#;].*//;	#Make comment lines empty
+	    $line =~ s/^\s*$//;		# Make blank lines empty
+	    $line =~ s/^\s*[#;].*//;	# Make comment lines empty
 	    push @contents, $line;
 	}
 	$self->{CONTENTS} = \@contents;
@@ -1034,7 +1022,7 @@ sub new {
 	croak qq(You must pass in the Section type and Description);
     }
 
-    $type = ucfirst lc $type;	#In the form of a Sub-Class Name
+    $type = ucfirst lc $type;	# In the form of a Sub-Class Name
 
     $class .= "::$type";
 
@@ -1130,7 +1118,7 @@ sub glob2regex {
     # character as a temporary replacement for "**" and then replace
     # "*". After this is done, we can replace NUL with ".*".
 
-    $glob =~ s{\\}{/}g; 		#Change backslashes to forward slashes
+    $glob =~ s{\\}{/}g; 		# Change backslashes to forward slashes
 
     # Quote all regex characters
     ( my $regex = $glob ) =~ s{([\.\+\{\}\[\]])}{\\$1}g;
@@ -1168,7 +1156,7 @@ sub Users {
     my $users		= shift;
 
     if ( defined $users ) {
-	$self->{USERS} = [];	#Redefines all users: Don't add new ones
+	$self->{USERS} = [];	# Redefines all users: Don't add new ones
 	for my $user ( split /[\s,]+/, $users ) {
 	    push @{ $self->{USERS} }, lc $user;
 	}
@@ -1241,7 +1229,7 @@ sub Case {
     my $self		= shift;
     my $case		= shift;
 
-    $self->{CASE} = "match" if not exists $self->{CASE}; #Default
+    $self->{CASE} = "match" if not exists $self->{CASE};	# Default
     if ( defined $case ) {
 	$case = lc $case;
 	my %valid_cases;
@@ -1259,7 +1247,7 @@ sub Users {
     my $users		= shift;
 
     if ( defined $users ) {
-	my @users = map { lc } split /[\s,]+/, $users; #Lower case!
+	my @users = map { lc } split /[\s,]+/, $users;	# Lower case!
 	$self->{USERS} = \@users;
     }
 
@@ -1314,7 +1302,7 @@ sub Case {
     my $self		= shift;
     my $case		= shift;
 
-    $self->{CASE} = "match" if not exists $self->{CASE};	#Default;
+    $self->{CASE} = "match" if not exists $self->{CASE};	# Default;
     if ( defined $case ) {
 	my %valid_cases;
 	my $case = lc $case;
@@ -1462,7 +1450,7 @@ sub Case {
     my $self		= shift;
     my $case		= shift;
 
-    $self->{CASE} = "match" if not exists $self->{CASE};	#Default;
+    $self->{CASE} = "match" if not exists $self->{CASE};	# Default;
     if ( defined $case ) {
 	$case = lc $case;
 	my %valid_cases;
@@ -1696,7 +1684,7 @@ sub Ldap_groups {
     #
     # Get the Entry
     #
-    my $entry = $search->pop_entry;	#Should only return a single entry
+    my $entry = $search->pop_entry;		# Should only return a single entry
 
     #
     # Get the attribute of that entry
@@ -1704,7 +1692,9 @@ sub Ldap_groups {
 
     my @groups;
     for my $group ( $entry->get_value( $group_attr ) ) {
-	$group =~ s/cn=(.+?),.*/\L$1\U/i;  	#Just the "CN" value
+	$group =~ s/cn=(.+?),.*/\L$1\U/i;  	# Just the "CN" value
+	$group = lc $group;			# Make all lowercase
+	$group =~ s/\s+/_/g;			# normalize white spaces
 	push @groups, $group;
     }
     return wantarray ? @groups : \@groups;
@@ -1904,7 +1894,7 @@ sub File {
     my $section		= shift;
 
     if ( defined $section ) {
-	if ( ref $section eq "ARRAY" ) {   #Replacement of current contents
+	if ( ref $section eq "ARRAY" ) {	# Replacement of current contents
 	    $self->{SECTION} = $section;
 	} else {
 	    push @{ $self->{FILE} }, $section;
