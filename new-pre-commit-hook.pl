@@ -99,8 +99,8 @@ my @missing_params = verify_parameters( $sections );
 my @errors = ( @parse_errors, @missing_params );
 if ( @errors ) {
     for my $error ( @errors ) {
-	warn $error->Get_error . "\n";
 	warn "-" x 72 . "\n";
+	warn $error->Get_error . "\n";
     }
     exit 2;
 }
@@ -195,12 +195,12 @@ if ( @violations ) {
 	my $file = $violation->File;
 	my $error = $violation->Error;
 	my $policy = $violation->Policy;
+	print STDERR "-" x 72 . "\n";
 	print STDERR qq(COMMIT VIOLATION:);
 	print STDERR qq( In "$file") if $file;
 	print STDERR qq(\n);
-	print STDERR qq(    $policy\n);
 	print STDERR qq(    $error\n);
-	print "-" x 72 . "\n";
+	print STDERR qq(    $policy\n);
     }
     exit 2;
 }
