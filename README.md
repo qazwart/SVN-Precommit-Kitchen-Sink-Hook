@@ -1,121 +1,78 @@
-READ ME - The most important file you've downloaded
+READ ME - The most important file you've downloaded in Your Entire Life
 ===================================================
 
 What's this?
 ------------
 
-This is what I call my Subversion *Kitchen Sink* hooks. The first
-version of this was written back in 2002 when I first used Subversion. I
-was shocked that it was so easy to modify a tag since tags were merely
-branches. There was a pre-commit hook that allowed you to modify user
-permissions by specifying parts of the repository with `read-write` and
-`read-only` permissions using a Windows INI style control file.
+This what I call my *Kitchen Sink* Subversion pre-commit hook. When Subversion first came out, I was unhappy with the way *tags* were handled^1. It was too easy to accidentally modify a tag and not have it caught.
 
-I took the concept and added an `add-only` permission that allowed users
-to create a tag, but not modify it. Later on, I started adding other
-features I found useful, and started sharing this hook with others.
+There was already an access-control pre-commit hook that used Windows INI files, Perl regular expressions to match files, and the `read-only` and `read-write` access control. I rewrote that hook to include an `add-only` access control specifically for tags. Now, you can create, but not modify a tag.
 
-This pre-commit hooks can verify a commit in several different areas:
+Over the years, other features were added as requested by other users: Control properties, make comparisons to files case insensitive. Allow for the user of globs for matching file names, etc. I've also rewritten the hook several times as my Perl skills improved.
 
-* **Files**: You may specify what files via a Perl style regular
-  expression of via an Ant style glob expression, and then you can
-  specify the permissions on those flies and who has these permissions.
-  These permissions now include not only `read-write`, `read-only`, and
-  `add-only`, but also `no-add` and `no-delete`.  .  Permissions are
-  read from top to bottom, and the last matching permission to both the
-  user and the file specification is used. Thus, one specification can
-  take away the permission while another adds it back.
-* **Ban**: Sometimes you simply need to keep things like spaces out of
-  file names. The ban section allows you to specify file names that are
-  banned either through Perl regular expression or Ant style globs. This
-  only applies to newly added files.
-* **Properties**: You can specify what properties are required on
-  certain files via Perl regular expressions or Ant style globs. You can
-  also specify the value of those properties via the exact property to
-  match, or via a Perl regular expression.
-* **Revision Properties**: You can specify required revision properties
-  and their values. This is normally just done for the special Revision
-  Property `svn:log` which is the Subversion commit message. This is
-  usually done to require a commit message of a particular length, or to
-  make sure that a bug or feature ID is embedded in the commit message.
-  However, this can be used to require other revision properties too. A
-  warning though: You must have Subversion version 1.5 or greater to be
-  able to specify revision properties when you commit a change.
-  Otherwise, you're stuck with just `svn:log`.
+Now this hook can control several aspects of your repository:
 
-### Groups
-
-This pre-commit hook uses groups to help set file permissions. You can
-define a group in the `group` section header. Groups are read from top
-to bottom, and groups can include other groups.
-
-You can also use LDAP groups which is where the full power of this
-function truly comes into play. 
-
-### Control File
-
-You configure this hook via a Windows style [INI
-file](https://en.wikipedia.org/wiki/INI_file). The INI file format was
-originally chosen because the hook I copied uses one. However, I've kept
-the INI style because it is very easy to understand and use. Newer hooks
-use JSON and XML, but these are simply too complex for this task at
-hand.
-
-There is a sample `control.ini` file for your perusal.
+1. **File Commit Permissions**: You can control who may or may not make changes to a file. This can be specified via a Perl regular expression (which gives you a lot of flexibility) or an [Ant style file globs](http://ant.apache.org/manual/dirtasks.html#patterns) (which are easier to understand). There are five separate permissions that can be set on files:
+  * **`read-only`**: User cannot make changes to the file or directory.
+  * **`read-write`**: User can commit changes to the file or directory.
+  * **`add-only`**: User can add a directory via `svn cp`, but not modify any of the files in the directory. Perfect for tags.
+  * **`no-add`**: User can modify and commit changes, and even delete the file or directory, but not add any new files or directories.
+  * **`no-delete`**: User can modify and commit changes, but not delete the file.
+1. **Require Properties on files**: You can require that particular files must have particular properties on them. For example, all files that end in `*.sh` or are in a directory called `bin` should have the `svn:executable` property. `Makefile` should have the property `svn:eol-tyle` set to `LF`, etc.
+1. **Ban particular file names**: You may simply _ban_ file names. For example, Windows systems cannot have a file called 	`aux.*`, but this is allowed in Unix. If someone on a Mac or Linux system created  a file called `aux.java`, a user on a Windows machine would not be able to checkout or edit that project. Thus, you could ban users from adding any new files with a name that matches `**/aux.*`
+1. **Require Revision Properties**: This is mainly for the `svn:log` revision property which is the _commit message_. You can make sure that this message is a minimum length, or require that all commit messages contain at least one issue id from your issue tracking system. However, other revision properties can now be specified during a commit, and many people have taken advantage of that to require specific revision properties like [`bugtraq:message`](http://tortoisesvn.net/docs/release/TortoiseSVN_en/tsvn-dug-bugtracker.html).
+1. **LDAP/Windows Active Directory Integration**: This hook always allowed you to specify user groups on file commit permissions, but now you can use your LDAP/Windows Active Directory groups to help specify the groups you want to use when controlling file commit permission.
 
 Printing out Documentation
 --------------------------
 
-The two Perl pre-commit hooks have self-contained documentation. You
-should be able to use the C<perldoc> command to see this documentation:
+* The Perl scripts use **POD** documentation (Plain Old Documentation) that's embedded in the scripts themselves. You can use the `perldoc` command (which should be in the same directory as your `perl` command) to print out the documentation:
 
     $ perldoc pre-commit-kitchen-sink-hook.pl
+    
+This will print out the document on your computer as text or manpage like documents.
 
-or
+You can use the `pod2html` command (also in the `perl` directory) to convert the document to *HTML* and then use a Web browser to print that out:
 
-    $ perldoc new-pre-commit-hook.pl
+    $ pod2html pre-commit-kitchen-sink-hook.pl > pre-commit.html
+    $ open -a Firefox pre-commit.html
 
-This will print out all of the user documentation. The two programs will
-also print out all of their documentation if you call them with the
-`doc` command line parameter.
+The following are documented:
 
-You can generate HTML documentation with the C<pod2html> command:
-
-    $ pod2html new-pre-commit-hook.pl > new-pre-commit-hook.html
-
-This can be opened up in a browser. Note that `perldoc` and the
-`pod2html` commands are standard Perl commands that came with your
-installation of Perl. They don't have to be downloaded or installed.
-They are yours to use.
+* **`new-pre-commit-hook` and `pre-commit-kitchen-sink-hook.pl`**: These contain the documentation on how to use the program including the various parameters.
+* **Programming-doc directory**: This contains the documentation of al the _Perl classes used in the `new-pre-commit-hook`. This is in case you want to try making any changes yourself.
+* **Control-file.md**: This is an explanation on how to create a control file and how it is structured.
 
 The Two Pre-Commit Hooks
 ------------------------
 
-There are two versions of this hook script. The first is one I wrote
-years ago and has been heavily tested.
-(pre-commit-kitchen-sink-hook.pl). Unfortunately, it also shows that I
-had a lot less programming experience. It includes poor object
-definitions, and a rudimentary understanding on how LDAP works.
+There are two versions of this hook script. 
 
-The new-pre-commit-hook.pl is a complete rewrite using better object
-definitions, and a better LDAP setup. It is new and written from scratch
-which means it is probably chock full of errors.
+* `pre-commit-kitchen-sink-hook.pl`: This version is about five years old, and has been heavily patched, bug-fixed, and tested on hundreds of various sites. However, it is also deprecated.
+* `new-pre-commit-hook.pl`: When I was a developer, I had a manager who said that any piece of code that's over five years old should be printed out, run through a shredder, burned, the ashes ground down to a fine powder, and then dispersed by the wind. After five years, the code is so heavily patched, it's unstable and you're afraid to touch it. Also, you've learned a lot, and new programming resources have come in that you can use. This version of my pre-commit hook is either the fifth or six complete rewrite.
+	* The objects *defined* in the program are much cleaner which will make fixing issues or adding new features much easier to do.
+	* I understand how LDAP works, and have improved its implementation.
+	* I now use exception-based programming techniques which makes it easier to catch errors and to track down the errors.
+	* The user error messages are cleaner and easier to understand. I now include a _policy_ message that explains the error and the description that is in the control file. I use dashed lines to help separate them, and boldly claim **COMMIT VIOLATION**. There's no mistake why you have the commit error any more.
+	* If I find an error when parsing the control file, I show you the section, line, and the error. This makes it easier to fix control file errors.
+	* One of the last features I added before the rewrite was the ability to put the control file inside the repository itself. However, if you made a mistake in the control file, you end up locking yourself out of the repository. I now parse the control file if you update it to make sure that the syntax is valid.
+	
+Therefore, I would prefer you to use the `new-pre-commit-hook.pl` I've ran it through a standard suite of tests I have created, and it should be ready for industrial usage. However, I know that there might be some bugs hidden deep inside, so I have the old hook that you can use as a backup.
 
-However, this is the new pre-commit hook that I am supporting. Errors
-and bugs found will be fixed as quickly as possible, and feature
-requests will be added. The older pre-commit-kitchen-sink-hook.pl is
-being deprecated.
-
-Class Documentation
--------------------
-
-In the repository is a bunch of `*.pod` files. These are the files where
-the classes used by the `new-pre-commit-hook.pl` are documented. You may
-use the `perldoc` and the various `pod2xx` commands to see this
-documentation.
+However, that old hook has been deprecated. I will no longer be fixing bugs in that hook or adding new features. If you use the old hook and have a problem, I'll tell you to use the new hook.
 
 Coding Style
 ------------
+
+Perl has a reputation of being a _write only_ language. This is really an unfair allegation. Perl is an old and crufty language, and after 30 years, there are a lot of ..uh.. *features* that are no longer used. Plus, the fact that there are regular obfuscated  Perl coding contests doesn't help it's readability reputation.
+
+One of the problems are regular expressions which are found in all languages, but Perl developers seem to really like. Regular expressions have been likened to sailor cussing in comic strips, but that's just the nature of regular expressions. They're pretty esoteric in almost any programming language.
+
+Another is that Perl has some pretty flexible syntax. Some of that is probably a mistake - for example, Perl has a _default variable_ called `$_` that can be hidden from view. It was an attempt to make Perl more like a natural language, but really decreased legibility.
+
+A lot of Perl programmers never learned Perl, and thus have hacked their way through it. Nor, do you need to use subroutines, variable scoping, or objects which make programs difficult to follow.
+
+I do my best to make my code readable and easy to understand. I use a lot of objects and subroutines to help hide code complexity. I have a lot of comments and try to keep away from overly complex coding. Even Python developers have commented on how readable my code is.
 
 The coding style is done to my very best, but feeble attempt to match
 the coding style recommended by Damian Conway's [Perl Best
@@ -151,4 +108,6 @@ whatever reason you want with these three caveats:
    I'd prefer. Or, if you're feeling really spendthrify, you can buy me
    lunch. I promise to eat with my mouth closed and to use a napkin
    instead of my sleeves.
-
+   
+--
+^1^. Making tags and branches full members of your version control system instead of mere meta-data actually has a lot of advantages. You get a complete history of when they were created, modified, and by whom and why. Plus, they're easily visible via `svn ls`. And, you can remove old tags without completely removing them. Thus they won't show up with an `svn ls`, but they're still in the repository.
