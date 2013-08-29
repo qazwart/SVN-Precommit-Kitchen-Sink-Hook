@@ -4,7 +4,7 @@ READ ME - The most important file you've downloaded in Your Entire Life
 What's this?
 ------------
 
-This what I call my *Kitchen Sink* Subversion pre-commit hook. When Subversion first came out, I was unhappy with the way *tags* were handled^1. It was too easy to accidentally modify a tag and not have it caught.
+This what I call my *Kitchen Sink* Subversion pre-commit hook. When Subversion first came out, I was unhappy with the way *tags* were handled<sup>1</sup>. It was too easy to accidentally modify a tag and not have it caught.
 
 There was already an access-control pre-commit hook that used Windows INI files, Perl regular expressions to match files, and the `read-only` and `read-write` access control. I rewrote that hook to include an `add-only` access control specifically for tags. Now, you can create, but not modify a tag.
 
@@ -110,4 +110,4 @@ whatever reason you want with these three caveats:
    instead of my sleeves.
    
 --
-^1^. Making tags and branches full members of your version control system instead of mere meta-data actually has a lot of advantages. You get a complete history of when they were created, modified, and by whom and why. Plus, they're easily visible via `svn ls`. And, you can remove old tags without completely removing them. Thus they won't show up with an `svn ls`, but they're still in the repository.
+<sup>1.</sup> Making tags and branches full members of your version control system instead of mere meta-data actually has a lot of advantages. You get a complete history of when they were created, modified, and by whom and why. Plus, they're easily visible via `svn ls`. And, you can remove old tags without completely removing them. Thus they won't show up with an `svn ls`, but they're still in the repository.
