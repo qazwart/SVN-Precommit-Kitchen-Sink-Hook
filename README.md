@@ -1,5 +1,5 @@
 READ ME - The most important file you've downloaded in Your Entire Life
-===================================================
+=======================================================================
 
 What's this?
 ------------
@@ -13,29 +13,35 @@ Over the years, other features were added as requested by other users: Control p
 Now this hook can control several aspects of your repository:
 
 1. **File Commit Permissions**: You can control who may or may not make changes to a file. This can be specified via a Perl regular expression (which gives you a lot of flexibility) or an [Ant style file globs](http://ant.apache.org/manual/dirtasks.html#patterns) (which are easier to understand). There are five separate permissions that can be set on files:
-  * **`read-only`**: User cannot make changes to the file or directory.
-  * **`read-write`**: User can commit changes to the file or directory.
-  * **`add-only`**: User can add a directory via `svn cp`, but not modify any of the files in the directory. Perfect for tags.
-  * **`no-add`**: User can modify and commit changes, and even delete the file or directory, but not add any new files or directories.
-  * **`no-delete`**: User can modify and commit changes, but not delete the file.
+  * **read-only**: User cannot make changes to the file or directory.
+  * **read-write**: User can commit changes to the file or directory.
+  * **add-only**: User can add a directory via `svn cp`, but not modify any of the files in the directory. Perfect for tags.
+  * **no-add**: User can modify and commit changes, and even delete the file or directory, but not add any new files or directories.
+  * **no-delete**: User can modify and commit changes, but not delete the file.
+  
 1. **Require Properties on files**: You can require that particular files must have particular properties on them. For example, all files that end in `*.sh` or are in a directory called `bin` should have the `svn:executable` property. `Makefile` should have the property `svn:eol-tyle` set to `LF`, etc.
+
+1. **Personalized directory/file name access**: I created a Watches post-commit hook that allowed users to create their own watch list of files to watch for changes. The problem is how do I set it up, so that users can only modify their own watch files. This pre-commit hook can do just that. You can specify a file or directory that contains a user's name, and only that user will be able to change that file.
+
 1. **Ban particular file names**: You may simply _ban_ file names. For example, Windows systems cannot have a file called 	`aux.*`, but this is allowed in Unix. If someone on a Mac or Linux system created  a file called `aux.java`, a user on a Windows machine would not be able to checkout or edit that project. Thus, you could ban users from adding any new files with a name that matches `**/aux.*`
+
 1. **Require Revision Properties**: This is mainly for the `svn:log` revision property which is the _commit message_. You can make sure that this message is a minimum length, or require that all commit messages contain at least one issue id from your issue tracking system. However, other revision properties can now be specified during a commit, and many people have taken advantage of that to require specific revision properties like [`bugtraq:message`](http://tortoisesvn.net/docs/release/TortoiseSVN_en/tsvn-dug-bugtracker.html).
+
 1. **LDAP/Windows Active Directory Integration**: This hook always allowed you to specify user groups on file commit permissions, but now you can use your LDAP/Windows Active Directory groups to help specify the groups you want to use when controlling file commit permission.
 
-Printing out Documentation
+Printing Out Documentation
 --------------------------
 
 * The Perl scripts use **POD** documentation (Plain Old Documentation) that's embedded in the scripts themselves. You can use the `perldoc` command (which should be in the same directory as your `perl` command) to print out the documentation:
 
-    $ perldoc pre-commit-kitchen-sink-hook.pl
+	$ perldoc pre-commit-kitchen-sink-hook.pl
     
 This will print out the document on your computer as text or manpage like documents.
 
 You can use the `pod2html` command (also in the `perl` directory) to convert the document to *HTML* and then use a Web browser to print that out:
 
-    $ pod2html pre-commit-kitchen-sink-hook.pl > pre-commit.html
-    $ open -a Firefox pre-commit.html
+	$ pod2html pre-commit-kitchen-sink-hook.pl > pre-commit.html
+	$ open -a Firefox pre-commit.html
 
 The following are documented:
 
@@ -49,6 +55,7 @@ The Two Pre-Commit Hooks
 There are two versions of this hook script. 
 
 * `pre-commit-kitchen-sink-hook.pl`: This version is about five years old, and has been heavily patched, bug-fixed, and tested on hundreds of various sites. However, it is also deprecated.
+
 * `new-pre-commit-hook.pl`: When I was a developer, I had a manager who said that any piece of code that's over five years old should be printed out, run through a shredder, burned, the ashes ground down to a fine powder, and then dispersed by the wind. After five years, the code is so heavily patched, it's unstable and you're afraid to touch it. Also, you've learned a lot, and new programming resources have come in that you can use. This version of my pre-commit hook is either the fifth or six complete rewrite.
 	* The objects *defined* in the program are much cleaner which will make fixing issues or adding new features much easier to do.
 	* I understand how LDAP works, and have improved its implementation.

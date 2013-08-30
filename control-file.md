@@ -6,7 +6,7 @@ style](https://en.wikipedia.org/wiki/INI_file) control file to
 control the pre-commit hook. I chose this because this type of file
 layout is easy to understand and simple to maintain.
 
-What is an Windows Ini File?
+What is a Windows Ini File?
 ---------------------------
 
 A Windows Ini file consists of sections marked by a section header.
@@ -96,11 +96,14 @@ Permissions are read from the top down, and the last file section that applies i
 
 There are several parameters used by a **File** section. Section parameters are case insensitive.
 
+* **file**: Use Ant file globs to define the files with this permission. Ant globs are always anchored to the front and back, so if you simply specify `**.java`, it probably won't match anything in your repository. You need to specify `*/*.java`. File parameters are converted into regular expressions. You should not use the `file` parameter and the `match` parameter together. The string `<USER>` will be replaced by the ID of the user who made the commit. This id will be converted to all lowercase and white spaces will become underscores.
 
-* **file**: Use Ant file globs to define the files with this permission. Ant globs are always anchored to the front and back, so if you simply specify `**.java`, it probably won't match anything in your repository. You need to specify `**/*.java`. File parameters are converted into regular expressions. You should not use the `file` parameter and the `match` parameter together. The string `<USER>` will be replaced by the ID of the user who made the commit. This id will be converted to all lowercase and white spaces will become underscores.
 * **match**: Use Perl regular expressions to match the file's name. This is more powerful than Ant globs, but are also trickier to get right. Unlike globs, regular expressions are not anchored unless you specify that. The string `<USER>` will be replaced by the ID of the user who made the commit. The string `<USER>` will be replaced by the ID of the user who made the commit. This id will be converted to all lowercase and white spaces will become underscores.
+
 * **users**: A list of users or groups this section applies to. User names may be either separated by whitespace or commas. There's a special group `@all` that applies to all users. Group names begin with an at-sign.
+
 * **case**: Optional parameter. Whether case is significant when matching the file's name. The two valid values are `match` and `ignore`. The default is `match`. The case of the value of this parameter is not significant. 
+
 * **access**: The access the committer has with this file. Case is not significant with this parameter's value. The valid access types are:
 
 	* **read-only**: Committer has no permission to change this file.
@@ -203,7 +206,7 @@ The above aliases the *IT Development LDAP Security Group* group to just *it* wh
 	access = read-write
 	users @it
 	
-There is usually a single LDAP although the control file can handle multiple groups. The Section name of the LDAP group will start with the word `ldap` and the _description_ is the full URL for that LDAP server, including whether it's LDAP or LDAPS, and the port used. Some sites have multiple LDAP servers including ones used for backups. You may specify them all in the Section header.
+There is usually a single LDAP section although the control file can handle multiple LDAP sections. The Section name of the LDAP group will start with the word `ldap` and the _description_ is the full URL for that LDAP server, including whether it's LDAP or LDAPS, and the port used. Some sites have multiple LDAP servers including ones used for backups. You may specify them all in the Section header.
 
 An LDAP section may take several parameters:
 
