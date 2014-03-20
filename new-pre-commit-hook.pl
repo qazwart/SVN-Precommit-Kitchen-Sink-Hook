@@ -187,7 +187,7 @@ while ( my $line = <$cmd_fh> ) {
     # For control files that have been changed: Make sure they're formatted correctly
     #
     if ( $control_files_index{$file} ) {  # This is a control file. Parse
-	push @violations, check_control_file_for_errors($file, $configuration);
+	push @violations, check_control_file($file, $configuration);
     }
 }
 
