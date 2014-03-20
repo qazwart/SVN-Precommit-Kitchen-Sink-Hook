@@ -581,7 +581,7 @@ sub check_bans {
 	my $regex = $ban_rule->Match;
 	my $case = $ban_rule->Case;
 	if ( $case eq "ignore" ? $file_name =~ /$regex/i : $file_name =~ /$regex/ ) {
-	    my $violation = Violation->new( $file_name, $ban_rule->Desciption );
+	    my $violation = Violation->new( $file_name, $ban_rule->Description );
 	    $violation->Policy("File name is not permitted to be added into repository");
 	    return $violation;
 	}

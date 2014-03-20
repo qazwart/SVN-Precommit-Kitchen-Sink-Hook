@@ -1,7 +1,8 @@
 #!/bin/sh
 
+SVNLOOK="/usr/bin/svnlook" # Change this to point to the correct location
 REPOS="$1"
 TXN="$2"
 HOOKS_DIR="$1/hooks"
 
-$HOOKS_DIR/pre-commit-kitchen-sink-hook.pl -t $TXN -svnlook /usr/bin/svnlook -file $HOOKS_DIR/control.ini $REPOS
+$HOOKS_DIR/new-pre-commit-hook.pl -t $TXN -svnlook $SVNLOOK -file $HOOKS_DIR/control.ini $REPOS
