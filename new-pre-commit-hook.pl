@@ -389,7 +389,7 @@ sub verify_parameters {
 		my $control_file = $section->Control_file;
 		my $line_number = $section->Control_file_line;
 		( my $error = $@ ) =~ s/ at .*$//;
-		push @parse_errors,
+		push @missing_params,
 		    Parse_error->new( $error, $control_file, $line_number);
 	    }
 	}
@@ -612,6 +612,7 @@ sub check_properties {
     chomp @properties;
     while ( my $property = <@properties> ) {	# Fetch the property for that file
 	next if $property eq "";
+        next unless $property =~ s/^\s+//;
 	my $command = join ( " ",
 	    $configuration->Svnlook,
 	    SVNLOOK_PROPGET,
