@@ -9,7 +9,7 @@ use Getopt::Long;
 use Pod::Usage;
 
 use constant {
-    SVNLOOK_DEFAULT	=> '/usr/bin/svnlook',
+    SVNLOOK_DEFAULT	=> '/usr/local/bin/svnlook',
     SVN_REPO_DEFAULT	=> '/path/to/repository',
     SECTION_HEADER	=> qr/^\s*\[\s*(\w+)\s+(.*)\]\s*$/,
     PARAMETER_LINE	=> qr/^\s*(\w+)\s*=\s*(.*)$/,
@@ -85,6 +85,7 @@ for my $control_file ( @{ $parameters{filelocations} } ) {
 	Control_file->new( FILE_IN_REPO, $control_file, $configuration );
 }
 
+warn Dumper \@control_file_list;
 #
 # Parse the control files, and put the information in $sections
 #
@@ -961,6 +962,7 @@ sub new {
 	    croak qq(Couldn't retreive contents of control file)
 	    . qq("$location" from repository "$repository");
 	}
+        chomp @file_contents;
 	$self->Content(\@file_contents);
     }
     return $self;
