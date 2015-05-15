@@ -85,7 +85,6 @@ for my $control_file ( @{ $parameters{filelocations} } ) {
 	Control_file->new( FILE_IN_REPO, $control_file, $configuration );
 }
 
-warn Dumper \@control_file_list;
 #
 # Parse the control files, and put the information in $sections
 #
@@ -613,7 +612,7 @@ sub check_properties {
     chomp @properties;
     while ( my $property = <@properties> ) {	# Fetch the property for that file
 	next if $property eq "";
-        next unless $property =~ s/^\s+//;
+        next unless $property =~ s/^\s*//;
 	my $command = join ( " ",
 	    $configuration->Svnlook,
 	    SVNLOOK_PROPGET,
